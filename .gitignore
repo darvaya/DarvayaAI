@@ -45,5 +45,6 @@ yarn-error.log*
 # node_modules
 /node_modules
 
-#Refactor_Proposal
-Refactor_Proposal/RefactorReport-DB-Driver.md
+#Refactor_Proposals & Refactor_Reports
+Refactor_Proposal/
+Refactor_Report/
