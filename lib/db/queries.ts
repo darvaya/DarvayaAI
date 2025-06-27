@@ -39,7 +39,13 @@ import { ChatSDKError } from '../errors';
 // https://authjs.dev/reference/adapter/drizzle
 
 // biome-ignore lint: Forbidden non-null assertion.
-const client = postgres(process.env.POSTGRES_URL!);
+const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
+if (!connectionString) {
+  throw new Error(
+    'Database URL not found. Please set POSTGRES_URL or DATABASE_URL in your environment',
+  );
+}
+const client = postgres(connectionString);
 const db = drizzle(client);
 
 export async function getUser(email: string): Promise<Array<User>> {
@@ -73,9 +79,12 @@ export async function createGuestUser() {
       email: user.email,
     });
   } catch (error) {
+    console.error('Database error in createGuestUser:', error);
+    console.error('Attempted values:', { email, password: '[REDACTED]' });
     throw new ChatSDKError(
       'bad_request:database',
       'Failed to create guest user',
+      error instanceof Error ? error : new Error(String(error)),
     );
   }
 }

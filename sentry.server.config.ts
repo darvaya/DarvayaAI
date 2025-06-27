@@ -1,15 +1,15 @@
-import * as Sentry from '@sentry/nextjs';
+// This file configures the initialization of Sentry on the server.
+// The config you add here will be used whenever the server handles a request.
+// https://docs.sentry.io/platforms/javascript/guides/nextjs/
+
+import * as Sentry from "@sentry/nextjs";
 
 Sentry.init({
-  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
-  environment: process.env.NODE_ENV,
-  tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
-  debug: process.env.NODE_ENV === 'development',
-  beforeSend(event) {
-    // Filter out expected ChatSDKError instances
-    if (event.exception?.values?.[0]?.type === 'ChatSDKError') {
-      return null;
-    }
-    return event;
-  },
+  dsn: "https://d3b47644f40fcc74c0bb34c6c2f3dcf9@o4509570715484160.ingest.us.sentry.io/4509570723282944",
+
+  // Define how likely traces are sampled. Adjust this value in production, or use tracesSampler for greater control.
+  tracesSampleRate: 1,
+
+  // Setting this option to true will print useful information to the console while you're setting up Sentry.
+  debug: false,
 });

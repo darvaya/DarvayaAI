@@ -48,3 +48,6 @@ yarn-error.log*
 #Refactor_Proposals & Refactor_Reports
 Refactor_Proposal/
 Refactor_Report/
+
+# Sentry Config File
+.env.sentry-build-plugin
