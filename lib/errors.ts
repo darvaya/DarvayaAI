@@ -33,6 +33,8 @@ export const visibilityBySurface: Record<Surface, ErrorVisibility> = {
   suggestions: 'response',
 };
 
+import * as Sentry from '@sentry/nextjs';
+
 export class ChatSDKError extends Error {
   public type: ErrorType;
   public surface: Surface;
@@ -48,6 +50,21 @@ export class ChatSDKError extends Error {
     this.surface = surface as Surface;
     this.message = getMessageByErrorCode(errorCode);
     this.statusCode = getStatusCodeByType(this.type);
+
+    // Report critical errors to Sentry
+    if (this.surface === 'database' || this.statusCode >= 500) {
+      Sentry.captureException(this, {
+        tags: {
+          errorType: this.type,
+          surface: this.surface,
+          errorCode,
+        },
+        extra: {
+          cause,
+          statusCode: this.statusCode,
+        },
+      });
+    }
   }
 
   public toResponse() {
