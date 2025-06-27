@@ -286,6 +286,7 @@ export async function* streamChatWithToolsOptimized(
   const enhancedContext = { ...context, requestId };
 
   const overallTimer = new PerformanceTimer();
+  // biome-ignore lint/style/useConst: currentMessages is modified via push() in the loop below
   let currentMessages = [...messages];
   let stepCount = 0;
   let totalTokens = 0;
