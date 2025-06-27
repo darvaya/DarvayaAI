@@ -2,7 +2,7 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "npm run start"
+startCommand = "next start --port $PORT"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
@@ -12,4 +12,6 @@ restartPolicyMaxRetries = 10
 branch = "develop"
 
 [environments.production.variables]
-NODE_ENV = "production" 
+NODE_ENV = "production"
+NEXTAUTH_URL = "https://darvayaai-production.up.railway.app"
+NEXTAUTH_URL_INTERNAL = "https://darvayaai-production.up.railway.app" 
