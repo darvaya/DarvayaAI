@@ -1,6 +1,5 @@
 import { convertToOpenAITool } from '../tools-handler';
-import type { ToolExecutor, ToolExecutionContext } from '../tools-handler';
-import type { CustomDataStreamWriter } from '../streaming';
+import type { ToolExecutor, } from '../tools-handler';
 import { getDocumentById, saveSuggestions } from '@/lib/db/queries';
 import type { Suggestion } from '@/lib/db/schema';
 import { generateUUID } from '@/lib/utils';

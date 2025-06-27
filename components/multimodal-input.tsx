@@ -145,56 +145,59 @@ function PureMultimodalInput({
     session,
   ]);
 
-  const uploadFile = async (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
+  const uploadFile = useCallback(
+    async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
 
-    try {
-      const response = await fetch('/api/files/upload', {
-        method: 'POST',
-        body: formData,
-      });
+      try {
+        const response = await fetch('/api/files/upload', {
+          method: 'POST',
+          body: formData,
+        });
 
-      if (response.ok) {
-        const data = await response.json();
-        const { url, pathname, contentType } = data;
+        if (response.ok) {
+          const data = await response.json();
+          const { url, pathname, contentType } = data;
 
-        // Track successful file upload
+          // Track successful file upload
+          trackFileUpload({
+            fileType: contentType,
+            fileSize: file.size,
+            success: true,
+            userId: session?.user?.id,
+          });
+
+          return {
+            url,
+            name: pathname,
+            contentType: contentType,
+          };
+        }
+
+        const { error } = await response.json();
+
+        // Track failed file upload
         trackFileUpload({
-          fileType: contentType,
+          fileType: file.type,
           fileSize: file.size,
-          success: true,
+          success: false,
           userId: session?.user?.id,
         });
 
-        return {
-          url,
-          name: pathname,
-          contentType: contentType,
-        };
+        toast.error(error);
+      } catch (error) {
+        trackFileUpload({
+          fileType: file.type,
+          fileSize: file.size,
+          success: false,
+          userId: session?.user?.id,
+        });
+        toast.error('Failed to upload file, please try again!');
       }
-
-      const { error } = await response.json();
-
-      // Track failed file upload
-      trackFileUpload({
-        fileType: file.type,
-        fileSize: file.size,
-        success: false,
-        userId: session?.user?.id,
-      });
-
-      toast.error(error);
-    } catch (error) {
-      trackFileUpload({
-        fileType: file.type,
-        fileSize: file.size,
-        success: false,
-        userId: session?.user?.id,
-      });
-      toast.error('Failed to upload file, please try again!');
-    }
-  };
+    },
+    [session?.user?.id],
+  );
 
   const handleFileChange = useCallback(
     async (event: ChangeEvent<HTMLInputElement>) => {
@@ -219,7 +222,7 @@ function PureMultimodalInput({
         setUploadQueue([]);
       }
     },
-    [setAttachments],
+    [setAttachments, uploadFile],
   );
 
   const { isAtBottom, scrollToBottom } = useScrollToBottom();

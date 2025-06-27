@@ -11,7 +11,7 @@ import {
   saveChat,
   saveMessages,
 } from '@/lib/db/queries';
-import { generateUUID, getTrailingMessageId } from '@/lib/utils';
+import { generateUUID, } from '@/lib/utils';
 import { generateTitleFromUserMessage } from '../../actions';
 import {
   createDocumentToolName,
@@ -29,7 +29,6 @@ import {
   weatherToolName,
   getWeatherExecutor,
 } from '@/lib/ai/tools/get-weather-openai';
-import { isProductionEnvironment } from '@/lib/constants';
 import { entitlementsByUserType } from '@/lib/ai/entitlements';
 import { postRequestBodySchema, type PostRequestBody } from './schema';
 import { geolocation } from '@vercel/functions';
@@ -42,7 +41,7 @@ import type { Chat } from '@/lib/db/schema';
 import { differenceInSeconds } from 'date-fns';
 import { ChatSDKError } from '@/lib/errors';
 import * as Sentry from '@sentry/nextjs';
-import { openRouterClient, getModelConfig } from '@/lib/ai/openrouter-client';
+import { getModelConfig } from '@/lib/ai/openrouter-client';
 import { CustomDataStreamWriter } from '@/lib/ai/streaming';
 import { streamChatWithTools, ToolRegistry } from '@/lib/ai/tools-handler';
 

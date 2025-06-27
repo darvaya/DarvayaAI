@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import useSWR, { useSWRConfig } from 'swr';
 import { ChatHeader } from '@/components/chat-header';
 import type { Vote } from '@/lib/db/schema';
-import { fetcher, fetchWithErrorHandlers, generateUUID } from '@/lib/utils';
+import { fetcher } from '@/lib/utils';
 import { Artifact } from './artifact';
 import { MultimodalInput } from './multimodal-input';
 import { Messages } from './messages';
@@ -58,7 +58,7 @@ function PerformanceIndicator({
 
   return (
     <div className="flex items-center gap-2 text-xs text-gray-500 px-4 py-2 border-b">
-      <div className={`w-2 h-2 rounded-full ${getStatusColor()}`} />
+      <div className={`size-2 rounded-full ${getStatusColor()}`} />
       <span>{getStatusText()}</span>
 
       {metrics.requestCount > 0 && (

@@ -1,5 +1,5 @@
 import { convertToOpenAITool } from '../tools-handler';
-import type { ToolExecutor, ToolExecutionContext } from '../tools-handler';
+import type { ToolExecutor, } from '../tools-handler';
 
 // Tool executor function
 const getWeatherExecutor: ToolExecutor = async (args, context) => {

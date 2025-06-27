@@ -38,7 +38,6 @@ import { ChatSDKError } from '../errors';
 // use the Drizzle adapter for Auth.js / NextAuth
 // https://authjs.dev/reference/adapter/drizzle
 
-// biome-ignore lint: Forbidden non-null assertion.
 const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
 if (!connectionString) {
   throw new Error(
