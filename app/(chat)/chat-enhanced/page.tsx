@@ -1,0 +1,39 @@
+import { cookies } from 'next/headers';
+import { auth } from '@/app/(auth)/auth';
+import { ChatEnhanced } from '@/components/chat-enhanced';
+import { DEFAULT_CHAT_MODEL } from '@/lib/ai/models';
+import { generateUUID } from '@/lib/utils';
+import { DataStreamHandler } from '@/components/data-stream-handler';
+import { redirect } from 'next/navigation';
+
+export default async function EnhancedChatPage() {
+  const session = await auth();
+
+  if (!session) {
+    redirect('/api/auth/guest');
+  }
+
+  const id = generateUUID();
+
+  const cookieStore = await cookies();
+  const modelIdFromCookie = cookieStore.get('chat-model');
+
+  const selectedModel = modelIdFromCookie?.value || DEFAULT_CHAT_MODEL;
+
+  return (
+    <>
+      <ChatEnhanced
+        key={id}
+        id={id}
+        initialMessages={[]}
+        initialChatModel={selectedModel}
+        initialVisibilityType="private"
+        isReadonly={false}
+        session={session}
+        autoResume={false}
+        showPerformanceIndicator={true}
+      />
+      <DataStreamHandler id={id} />
+    </>
+  );
+}

@@ -1,10 +1,4 @@
-import {
-  appendClientMessage,
-  appendResponseMessages,
-  createDataStream,
-  smoothStream,
-  streamText,
-} from 'ai';
+import { appendClientMessage } from 'ai';
 import { auth, type UserType } from '@/app/(auth)/auth';
 import { type RequestHints, systemPrompt } from '@/lib/ai/prompts';
 import {
@@ -19,12 +13,23 @@ import {
 } from '@/lib/db/queries';
 import { generateUUID, getTrailingMessageId } from '@/lib/utils';
 import { generateTitleFromUserMessage } from '../../actions';
-import { createDocument } from '@/lib/ai/tools/create-document';
-import { updateDocument } from '@/lib/ai/tools/update-document';
-import { requestSuggestions } from '@/lib/ai/tools/request-suggestions';
-import { getWeather } from '@/lib/ai/tools/get-weather';
+import {
+  createDocumentToolName,
+  createDocumentExecutor,
+} from '@/lib/ai/tools/create-document-openai';
+import {
+  updateDocumentToolName,
+  updateDocumentExecutor,
+} from '@/lib/ai/tools/update-document-openai';
+import {
+  requestSuggestionsToolName,
+  requestSuggestionsExecutor,
+} from '@/lib/ai/tools/request-suggestions-openai';
+import {
+  weatherToolName,
+  getWeatherExecutor,
+} from '@/lib/ai/tools/get-weather-openai';
 import { isProductionEnvironment } from '@/lib/constants';
-import { myProvider } from '@/lib/ai/providers';
 import { entitlementsByUserType } from '@/lib/ai/entitlements';
 import { postRequestBodySchema, type PostRequestBody } from './schema';
 import { geolocation } from '@vercel/functions';
@@ -37,6 +42,9 @@ import type { Chat } from '@/lib/db/schema';
 import { differenceInSeconds } from 'date-fns';
 import { ChatSDKError } from '@/lib/errors';
 import * as Sentry from '@sentry/nextjs';
+import { openRouterClient, getModelConfig } from '@/lib/ai/openrouter-client';
+import { CustomDataStreamWriter } from '@/lib/ai/streaming';
+import { streamChatWithTools, ToolRegistry } from '@/lib/ai/tools-handler';
 
 export const maxDuration = 60;
 
@@ -158,83 +166,209 @@ export async function POST(request: Request) {
     const streamId = generateUUID();
     await createStreamId({ streamId, chatId: id });
 
-    const stream = createDataStream({
-      execute: (dataStream) => {
-        const result = streamText({
-          model: myProvider.languageModel(selectedChatModel),
-          system: systemPrompt({ selectedChatModel, requestHints }),
-          messages,
-          maxSteps: 5,
-          experimental_activeTools:
-            selectedChatModel === 'chat-model-reasoning'
-              ? []
-              : [
-                  'getWeather',
-                  'createDocument',
-                  'updateDocument',
-                  'requestSuggestions',
-                ],
-          experimental_transform: smoothStream({ chunking: 'word' }),
-          experimental_generateMessageId: generateUUID,
-          tools: {
-            getWeather,
-            createDocument: createDocument({ session, dataStream }),
-            updateDocument: updateDocument({ session, dataStream }),
-            requestSuggestions: requestSuggestions({
-              session,
-              dataStream,
-            }),
-          },
-          onFinish: async ({ response }) => {
-            if (session.user?.id) {
-              try {
-                const assistantId = getTrailingMessageId({
-                  messages: response.messages.filter(
-                    (message) => message.role === 'assistant',
-                  ),
-                });
+    const stream = new ReadableStream({
+      start(controller) {
+        const writer = new CustomDataStreamWriter(controller);
 
-                if (!assistantId) {
-                  throw new Error('No assistant message found!');
-                }
+        // Convert UI messages to OpenAI format
+        const openAiMessages = messages.map((msg: any) => ({
+          role: msg.role,
+          content: msg.content || (msg.parts ? msg.parts[0]?.text : ''),
+        }));
 
-                const [, assistantMessage] = appendResponseMessages({
-                  messages: [message],
-                  responseMessages: response.messages,
-                });
+        // Set up tools for non-reasoning models
+        const toolRegistry = new ToolRegistry();
+        const availableTools =
+          selectedChatModel === 'chat-model-reasoning'
+            ? []
+            : [
+                weatherToolName,
+                createDocumentToolName,
+                updateDocumentToolName,
+                requestSuggestionsToolName,
+              ];
 
-                await saveMessages({
-                  messages: [
-                    {
-                      id: assistantId,
-                      chatId: id,
-                      role: assistantMessage.role,
-                      parts: assistantMessage.parts,
-                      attachments:
-                        assistantMessage.experimental_attachments ?? [],
-                      createdAt: new Date(),
+        if (availableTools.length > 0) {
+          toolRegistry.register(
+            weatherToolName,
+            {
+              type: 'function',
+              function: {
+                name: weatherToolName,
+                description: 'Get current weather for a location',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    latitude: { type: 'number', minimum: -90, maximum: 90 },
+                    longitude: { type: 'number', minimum: -180, maximum: 180 },
+                  },
+                  required: ['latitude', 'longitude'],
+                },
+              },
+            },
+            getWeatherExecutor,
+          );
+
+          toolRegistry.register(
+            createDocumentToolName,
+            {
+              type: 'function',
+              function: {
+                name: createDocumentToolName,
+                description: 'Create a new document/artifact',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    kind: {
+                      type: 'string',
+                      enum: ['text', 'code', 'image', 'sheet'],
+                      description: 'The type of document to create',
                     },
-                  ],
+                    title: { type: 'string', description: 'Document title' },
+                    content: {
+                      type: 'string',
+                      description: 'Document content',
+                    },
+                  },
+                  required: ['kind', 'title', 'content'],
+                },
+              },
+            },
+            createDocumentExecutor,
+          );
+
+          toolRegistry.register(
+            updateDocumentToolName,
+            {
+              type: 'function',
+              function: {
+                name: updateDocumentToolName,
+                description: 'Update an existing document',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    documentId: {
+                      type: 'string',
+                      description: 'Document ID to update',
+                    },
+                    content: { type: 'string', description: 'New content' },
+                  },
+                  required: ['documentId', 'content'],
+                },
+              },
+            },
+            updateDocumentExecutor,
+          );
+
+          toolRegistry.register(
+            requestSuggestionsToolName,
+            {
+              type: 'function',
+              function: {
+                name: requestSuggestionsToolName,
+                description: 'Request follow-up suggestions',
+                parameters: {
+                  type: 'object',
+                  properties: {
+                    message: {
+                      type: 'string',
+                      description: 'Current message context',
+                    },
+                  },
+                  required: ['message'],
+                },
+              },
+            },
+            requestSuggestionsExecutor,
+          );
+        }
+
+        // Start streaming with OpenRouter
+        (async () => {
+          try {
+            const modelConfig = getModelConfig(
+              selectedChatModel as 'chat-model' | 'chat-model-reasoning',
+            );
+            const systemMessage = systemPrompt({
+              selectedChatModel,
+              requestHints,
+            });
+
+            // Add system message to the beginning
+            const messagesWithSystem = [
+              { role: 'system' as const, content: systemMessage },
+              ...openAiMessages,
+            ];
+
+            // Get the actual model name from mappings
+            const { getModelName } = await import('@/lib/ai/openrouter-client');
+            const modelName = getModelName(
+              selectedChatModel as 'chat-model' | 'chat-model-reasoning',
+            );
+
+            const streamGenerator = streamChatWithTools(
+              messagesWithSystem,
+              modelName,
+              { session, dataStream: writer },
+              {
+                temperature: modelConfig.temperature,
+                max_tokens: modelConfig.max_tokens,
+                top_p: modelConfig.top_p,
+                tools: availableTools,
+                maxSteps: 5,
+              },
+            );
+
+            let fullContent = '';
+            for await (const chunk of streamGenerator) {
+              if (chunk.type === 'content') {
+                fullContent += chunk.data;
+                writer.writeText(chunk.data);
+              } else if (chunk.type === 'tool_call') {
+                writer.writeData({
+                  type: 'tool-call',
+                  toolCall: chunk.data,
                 });
-              } catch (_) {
-                console.error('Failed to save chat');
+              } else if (chunk.type === 'tool_result') {
+                writer.writeData({
+                  type: 'tool-result',
+                  result: chunk.data,
+                });
+              } else if (chunk.type === 'finish') {
+                // Save the assistant message
+                if (session.user?.id && fullContent) {
+                  try {
+                    const assistantId = generateUUID();
+
+                    await saveMessages({
+                      messages: [
+                        {
+                          id: assistantId,
+                          chatId: id,
+                          role: 'assistant',
+                          parts: [{ type: 'text', text: fullContent }],
+                          attachments: [],
+                          createdAt: new Date(),
+                        },
+                      ],
+                    });
+                  } catch (error) {
+                    console.error('Failed to save chat:', error);
+                  }
+                }
+                break;
               }
             }
-          },
-          experimental_telemetry: {
-            isEnabled: isProductionEnvironment,
-            functionId: 'stream-text',
-          },
-        });
-
-        result.consumeStream();
-
-        result.mergeIntoDataStream(dataStream, {
-          sendReasoning: true,
-        });
-      },
-      onError: () => {
-        return 'Oops, an error occurred!';
+          } catch (error) {
+            console.error('Streaming error:', error);
+            writer.writeData({
+              type: 'error',
+              error: 'An error occurred while processing your request.',
+            });
+          } finally {
+            writer.close();
+          }
+        })();
       },
     });
 
@@ -322,8 +456,10 @@ export async function GET(request: Request) {
     return new ChatSDKError('not_found:stream').toResponse();
   }
 
-  const emptyDataStream = createDataStream({
-    execute: () => {},
+  const emptyDataStream = new ReadableStream({
+    start(controller) {
+      controller.close();
+    },
   });
 
   const stream = await streamContext.resumableStream(
@@ -353,12 +489,17 @@ export async function GET(request: Request) {
       return new Response(emptyDataStream, { status: 200 });
     }
 
-    const restoredStream = createDataStream({
-      execute: (buffer) => {
-        buffer.writeData({
-          type: 'append-message',
-          message: JSON.stringify(mostRecentMessage),
-        });
+    const restoredStream = new ReadableStream({
+      start(controller) {
+        const encoder = new TextEncoder();
+        const chunk = encoder.encode(
+          `0:${JSON.stringify({
+            type: 'append-message',
+            message: JSON.stringify(mostRecentMessage),
+          })}\n`,
+        );
+        controller.enqueue(chunk);
+        controller.close();
       },
     });
 
