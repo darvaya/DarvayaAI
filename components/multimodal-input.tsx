@@ -27,6 +27,8 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ArrowDown } from 'lucide-react';
 import { useScrollToBottom } from '@/hooks/use-scroll-to-bottom';
 import type { VisibilityType } from './visibility-selector';
+import type { Session } from 'next-auth';
+import { trackChatMessage, trackFileUpload } from '@/lib/analytics';
 
 function PureMultimodalInput({
   chatId,
@@ -42,6 +44,7 @@ function PureMultimodalInput({
   handleSubmit,
   className,
   selectedVisibilityType,
+  session,
 }: {
   chatId: string;
   input: UseChatHelpers['input'];
@@ -56,6 +59,7 @@ function PureMultimodalInput({
   handleSubmit: UseChatHelpers['handleSubmit'];
   className?: string;
   selectedVisibilityType: VisibilityType;
+  session?: Session;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { width } = useWindowSize();
@@ -112,6 +116,14 @@ function PureMultimodalInput({
   const submitForm = useCallback(() => {
     window.history.replaceState({}, '', `/chat/${chatId}`);
 
+    // Track chat message submission
+    trackChatMessage({
+      chatId,
+      messageType: 'user',
+      hasAttachments: attachments.length > 0,
+      userId: session?.user?.id,
+    });
+
     handleSubmit(undefined, {
       experimental_attachments: attachments,
     });
@@ -130,6 +142,7 @@ function PureMultimodalInput({
     setLocalStorageInput,
     width,
     chatId,
+    session,
   ]);
 
   const uploadFile = async (file: File) => {
@@ -146,15 +159,39 @@ function PureMultimodalInput({
         const data = await response.json();
         const { url, pathname, contentType } = data;
 
+        // Track successful file upload
+        trackFileUpload({
+          fileType: contentType,
+          fileSize: file.size,
+          success: true,
+          userId: session?.user?.id,
+        });
+
         return {
           url,
           name: pathname,
           contentType: contentType,
         };
       }
+
       const { error } = await response.json();
+
+      // Track failed file upload
+      trackFileUpload({
+        fileType: file.type,
+        fileSize: file.size,
+        success: false,
+        userId: session?.user?.id,
+      });
+
       toast.error(error);
     } catch (error) {
+      trackFileUpload({
+        fileType: file.type,
+        fileSize: file.size,
+        success: false,
+        userId: session?.user?.id,
+      });
       toast.error('Failed to upload file, please try again!');
     }
   };
@@ -317,6 +354,8 @@ export const MultimodalInput = memo(
     if (prevProps.status !== nextProps.status) return false;
     if (!equal(prevProps.attachments, nextProps.attachments)) return false;
     if (prevProps.selectedVisibilityType !== nextProps.selectedVisibilityType)
+      return false;
+    if (prevProps.session?.user?.id !== nextProps.session?.user?.id)
       return false;
 
     return true;

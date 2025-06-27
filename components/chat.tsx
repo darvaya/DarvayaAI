@@ -20,6 +20,7 @@ import { useSearchParams } from 'next/navigation';
 import { useChatVisibility } from '@/hooks/use-chat-visibility';
 import { useAutoResume } from '@/hooks/use-auto-resume';
 import { ChatSDKError } from '@/lib/errors';
+import { trackChatMessage } from '@/lib/analytics';
 
 export function Chat({
   id,
@@ -71,6 +72,14 @@ export function Chat({
       selectedVisibilityType: visibilityType,
     }),
     onFinish: () => {
+      // Track assistant response
+      trackChatMessage({
+        chatId: id,
+        messageType: 'assistant',
+        hasAttachments: false,
+        userId: session?.user?.id,
+      });
+
       mutate(unstable_serialize(getChatHistoryPaginationKey));
     },
     onError: (error) => {
@@ -153,6 +162,7 @@ export function Chat({
               setMessages={setMessages}
               append={append}
               selectedVisibilityType={visibilityType}
+              session={session}
             />
           )}
         </form>
