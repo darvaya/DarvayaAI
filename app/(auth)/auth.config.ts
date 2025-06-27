@@ -10,4 +10,6 @@ export const authConfig = {
     // while this file is also used in non-Node.js environments
   ],
   callbacks: {},
+  trustHost: true, // Enable for Railway deployment
+  useSecureCookies: process.env.NODE_ENV === 'production',
 } satisfies NextAuthConfig;
