@@ -1,8 +1,12 @@
 import { auth } from '@/app/(auth)/auth';
 import { getChatById, getVotesByChatId, voteMessage } from '@/lib/db/queries';
 import { ChatSDKError } from '@/lib/errors';
+import * as Sentry from '@sentry/nextjs';
 
 export async function GET(request: Request) {
+  // Add Sentry instrumentation
+  Sentry.getCurrentScope().setTag('api.route', 'vote-get');
+
   const { searchParams } = new URL(request.url);
   const chatId = searchParams.get('chatId');
 
@@ -18,6 +22,12 @@ export async function GET(request: Request) {
   if (!session?.user) {
     return new ChatSDKError('unauthorized:vote').toResponse();
   }
+
+  // Set user context for better error tracking
+  Sentry.setUser({
+    id: session.user.id,
+    email: session.user.email || undefined,
+  });
 
   const chat = await getChatById({ id: chatId });
 
@@ -35,6 +45,9 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  // Add Sentry instrumentation
+  Sentry.getCurrentScope().setTag('api.route', 'vote-patch');
+
   const {
     chatId,
     messageId,
@@ -54,6 +67,12 @@ export async function PATCH(request: Request) {
   if (!session?.user) {
     return new ChatSDKError('unauthorized:vote').toResponse();
   }
+
+  // Set user context for better error tracking
+  Sentry.setUser({
+    id: session.user.id,
+    email: session.user.email || undefined,
+  });
 
   const chat = await getChatById({ id: chatId });
 

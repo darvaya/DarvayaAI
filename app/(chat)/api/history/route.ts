@@ -2,8 +2,12 @@ import { auth } from '@/app/(auth)/auth';
 import type { NextRequest } from 'next/server';
 import { getChatsByUserId } from '@/lib/db/queries';
 import { ChatSDKError } from '@/lib/errors';
+import * as Sentry from '@sentry/nextjs';
 
 export async function GET(request: NextRequest) {
+  // Add Sentry instrumentation
+  Sentry.getCurrentScope().setTag('api.route', 'history');
+
   const { searchParams } = request.nextUrl;
 
   const limit = Number.parseInt(searchParams.get('limit') || '10');
@@ -22,6 +26,12 @@ export async function GET(request: NextRequest) {
   if (!session?.user) {
     return new ChatSDKError('unauthorized:chat').toResponse();
   }
+
+  // Set user context for better error tracking
+  Sentry.setUser({
+    id: session.user.id,
+    email: session.user.email || undefined,
+  });
 
   const chats = await getChatsByUserId({
     id: session.user.id,

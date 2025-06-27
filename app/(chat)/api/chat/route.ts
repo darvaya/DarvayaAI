@@ -36,6 +36,7 @@ import { after } from 'next/server';
 import type { Chat } from '@/lib/db/schema';
 import { differenceInSeconds } from 'date-fns';
 import { ChatSDKError } from '@/lib/errors';
+import * as Sentry from '@sentry/nextjs';
 
 export const maxDuration = 60;
 
@@ -62,12 +63,19 @@ function getStreamContext() {
 }
 
 export async function POST(request: Request) {
+  // Add Sentry instrumentation
+  Sentry.getCurrentScope().setTag('api.route', 'chat');
+
   let requestBody: PostRequestBody;
+  let session: any = null;
 
   try {
     const json = await request.json();
     requestBody = postRequestBodySchema.parse(json);
-  } catch (_) {
+  } catch (error) {
+    Sentry.captureException(error, {
+      tags: { error_type: 'request_parsing' },
+    });
     return new ChatSDKError('bad_request:api').toResponse();
   }
 
@@ -75,11 +83,17 @@ export async function POST(request: Request) {
     const { id, message, selectedChatModel, selectedVisibilityType } =
       requestBody;
 
-    const session = await auth();
+    session = await auth();
 
     if (!session?.user) {
       return new ChatSDKError('unauthorized:chat').toResponse();
     }
+
+    // Set user context for better error tracking
+    Sentry.setUser({
+      id: session.user.id,
+      email: session.user.email || undefined,
+    });
 
     const userType: UserType = session.user.type;
 
@@ -234,13 +248,26 @@ export async function POST(request: Request) {
       return new Response(stream);
     }
   } catch (error) {
+    // Only capture unexpected errors (ChatSDKError already handles itself)
+    if (!(error instanceof ChatSDKError)) {
+      Sentry.captureException(error, {
+        tags: {
+          api_route: 'chat',
+          user_id: session?.user?.id,
+        },
+      });
+    }
     if (error instanceof ChatSDKError) {
       return error.toResponse();
     }
+    throw error;
   }
 }
 
 export async function GET(request: Request) {
+  // Add Sentry instrumentation
+  Sentry.getCurrentScope().setTag('api.route', 'chat-resume');
+
   const streamContext = getStreamContext();
   const resumeRequestedAt = new Date();
 
@@ -260,6 +287,12 @@ export async function GET(request: Request) {
   if (!session?.user) {
     return new ChatSDKError('unauthorized:chat').toResponse();
   }
+
+  // Set user context for better error tracking
+  Sentry.setUser({
+    id: session.user.id,
+    email: session.user.email || undefined,
+  });
 
   let chat: Chat;
 
@@ -336,6 +369,9 @@ export async function GET(request: Request) {
 }
 
 export async function DELETE(request: Request) {
+  // Add Sentry instrumentation
+  Sentry.getCurrentScope().setTag('api.route', 'chat-delete');
+
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
 
@@ -348,6 +384,12 @@ export async function DELETE(request: Request) {
   if (!session?.user) {
     return new ChatSDKError('unauthorized:chat').toResponse();
   }
+
+  // Set user context for better error tracking
+  Sentry.setUser({
+    id: session.user.id,
+    email: session.user.email || undefined,
+  });
 
   const chat = await getChatById({ id });
 
