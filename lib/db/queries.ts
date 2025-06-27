@@ -192,9 +192,17 @@ export async function getChatsByUserId({
       hasMore,
     };
   } catch (error) {
+    console.error('Database error in getChatsByUserId:', error);
+    console.error('Input parameters:', {
+      id,
+      limit,
+      startingAfter,
+      endingBefore,
+    });
     throw new ChatSDKError(
       'bad_request:database',
       'Failed to get chats by user id',
+      error instanceof Error ? error : new Error(String(error)),
     );
   }
 }

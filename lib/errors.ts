@@ -39,8 +39,9 @@ export class ChatSDKError extends Error {
   public type: ErrorType;
   public surface: Surface;
   public statusCode: number;
+  public originalError?: Error;
 
-  constructor(errorCode: ErrorCode, cause?: string) {
+  constructor(errorCode: ErrorCode, cause?: string, originalError?: Error) {
     super();
 
     const [type, surface] = errorCode.split(':');
@@ -50,10 +51,16 @@ export class ChatSDKError extends Error {
     this.surface = surface as Surface;
     this.message = getMessageByErrorCode(errorCode);
     this.statusCode = getStatusCodeByType(this.type);
+    this.originalError = originalError;
+
+    // Log the original error for debugging
+    if (originalError && this.surface === 'database') {
+      console.error('Original database error:', originalError);
+    }
 
     // Report critical errors to Sentry
     if (this.surface === 'database' || this.statusCode >= 500) {
-      Sentry.captureException(this, {
+      Sentry.captureException(originalError || this, {
         tags: {
           errorType: this.type,
           surface: this.surface,
@@ -62,6 +69,8 @@ export class ChatSDKError extends Error {
         extra: {
           cause,
           statusCode: this.statusCode,
+          originalError: originalError?.message,
+          originalStack: originalError?.stack,
         },
       });
     }

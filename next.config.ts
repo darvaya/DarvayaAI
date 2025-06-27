@@ -4,6 +4,10 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   experimental: {
     ppr: true,
+    serverComponentsExternalPackages: [
+      'require-in-the-middle',
+      'import-in-the-middle',
+    ],
   },
   images: {
     remotePatterns: [
@@ -12,6 +16,7 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  serverExternalPackages: ['require-in-the-middle', 'import-in-the-middle'],
 };
 
 export default withSentryConfig(nextConfig, {
