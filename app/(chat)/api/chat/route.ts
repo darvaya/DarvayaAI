@@ -36,6 +36,10 @@ import { ChatSDKError } from '@/lib/errors';
 import * as Sentry from '@sentry/nextjs';
 import { getModelConfig } from '@/lib/ai/openrouter-client';
 import { CustomDataStreamWriter } from '@/lib/ai/streaming';
+import {
+  CoordinatedDataStreamWriter,
+  createCoordinatedStreamWriter,
+} from '@/lib/ai/coordinated-streaming';
 import { streamChatWithTools, toolRegistry } from '@/lib/ai/tools-handler';
 
 // Import tools to ensure they are registered with the global registry
@@ -200,7 +204,7 @@ export async function POST(request: Request) {
 
     const stream = new ReadableStream({
       start(controller) {
-        const writer = new CustomDataStreamWriter(controller);
+        const writer = createCoordinatedStreamWriter(controller);
 
         // Convert UI messages to OpenAI format
         const openAiMessages = messages.map((msg: any) => ({
@@ -311,16 +315,16 @@ export async function POST(request: Request) {
                 fullContent += chunk.data;
                 writer.writeText(chunk.data);
               } else if (chunk.type === 'tool_call') {
-                // Serialize tool call data properly for Redis compatibility
+                // FIXED: Remove double serialization - pass data directly
                 writer.writeData({
                   type: 'tool-call',
-                  data: JSON.stringify(chunk.data),
+                  data: chunk.data,
                 });
               } else if (chunk.type === 'tool_result') {
-                // Serialize tool result data properly for Redis compatibility
+                // FIXED: Remove double serialization - pass data directly
                 writer.writeData({
                   type: 'tool-result',
-                  data: JSON.stringify(chunk.data),
+                  data: chunk.data,
                 });
               } else if (chunk.type === 'finish') {
                 streamCompleted = true;
@@ -434,9 +438,9 @@ export async function POST(request: Request) {
             console.error('Streaming error:', error);
             writer.writeData({
               type: 'error',
-              data: JSON.stringify({
+              data: {
                 error: 'An error occurred while processing your request.',
-              }),
+              },
             });
 
             // Record failed performance metric

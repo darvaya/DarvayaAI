@@ -1,6 +1,7 @@
 import type OpenAI from 'openai';
 import { openRouterClient } from './openrouter-client';
 import type { CustomDataStreamWriter } from './streaming';
+import type { CoordinatedDataStreamWriter } from './coordinated-streaming';
 
 // Base tool interface
 export interface OpenAITool {
@@ -19,7 +20,7 @@ export interface OpenAITool {
 // Tool execution context
 export interface ToolExecutionContext {
   session: any;
-  dataStream?: CustomDataStreamWriter;
+  dataStream?: CustomDataStreamWriter | CoordinatedDataStreamWriter;
 }
 
 // Tool execution result
@@ -96,6 +97,13 @@ export async function executeToolCall(
 
   if (!executor) {
     console.error(`❌ Tool '${name}' not found in registry`);
+    // Signal tool error if we have a coordinated writer
+    if (context.dataStream && 'writeToolError' in context.dataStream) {
+      context.dataStream.writeToolError(
+        toolCall.id,
+        `Tool '${name}' not found`,
+      );
+    }
     return {
       success: false,
       error: `Tool '${name}' not found`,
@@ -104,13 +112,35 @@ export async function executeToolCall(
 
   try {
     console.log(`🔧 Executing tool: ${name}`);
+
+    // Signal tool start if we have a coordinated writer
+    if (context.dataStream && 'writeToolStart' in context.dataStream) {
+      context.dataStream.writeToolStart(toolCall.id, name);
+    }
+
     const args = JSON.parse(toolCall.function.arguments);
-    const result = await executor(args, context);
+
+    // CRITICAL FIX: Pass the main dataStream directly to tool executor
+    const result = await executor(args, {
+      session: context.session,
+      dataStream: context.dataStream, // Direct reference, not isolated
+    });
 
     if (result.success) {
       console.log(`✅ Tool '${name}' executed successfully`);
+      // Signal tool completion if we have a coordinated writer
+      if (context.dataStream && 'writeToolComplete' in context.dataStream) {
+        context.dataStream.writeToolComplete(toolCall.id, result.result);
+      }
     } else {
       console.log(`❌ Tool '${name}' failed: ${result.error}`);
+      // Signal tool error if we have a coordinated writer
+      if (context.dataStream && 'writeToolError' in context.dataStream) {
+        context.dataStream.writeToolError(
+          toolCall.id,
+          result.error || 'Unknown tool error',
+        );
+      }
     }
 
     return result;
@@ -118,6 +148,12 @@ export async function executeToolCall(
     const errorMessage =
       error instanceof Error ? error.message : 'Unknown error';
     console.error(`❌ Tool '${name}' execution error: ${errorMessage}`);
+
+    // Signal tool error if we have a coordinated writer
+    if (context.dataStream && 'writeToolError' in context.dataStream) {
+      context.dataStream.writeToolError(toolCall.id, errorMessage);
+    }
+
     return {
       success: false,
       error: errorMessage,
