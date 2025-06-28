@@ -8,13 +8,26 @@ import { SessionProvider } from 'next-auth/react';
 
 // Force rebuild to pick up new OpenRouter API key - 2025-06-28
 export const metadata: Metadata = {
-  metadataBase: new URL('https://chat.vercel.ai'),
-  title: 'Next.js Chatbot Template',
-  description: 'Next.js chatbot template using the AI SDK.',
+  metadataBase: new URL('https://darvayaai-production.up.railway.app'),
+  title: {
+    default: 'DarvayaAI',
+    template: `%s - DarvayaAI`,
+  },
+  description:
+    'AI-powered intelligent assistant with Gemini Flash Lite integration',
+  icons: {
+    icon: '/favicon.ico',
+    shortcut: '/favicon-16x16.png',
+    apple: '/apple-touch-icon.png',
+  },
 };
 
 export const viewport = {
   maximumScale: 1, // Disable auto-zoom on mobile Safari
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: 'white' },
+    { media: '(prefers-color-scheme: dark)', color: 'black' },
+  ],
 };
 
 const geist = Geist({
