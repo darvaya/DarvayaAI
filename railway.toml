@@ -4,12 +4,12 @@ builder = "NIXPACKS"
 [deploy]
 startCommand = "next start --port $PORT"
 healthcheckPath = "/api/health"
-healthcheckTimeout = 300
+healthcheckTimeout = 60
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 
 [environments.production]
-branch = "develop"
+branch = "main"
 
 [environments.production.variables]
 NODE_ENV = "production"
