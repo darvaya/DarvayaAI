@@ -76,19 +76,66 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
   }
 
   function convertToUIMessages(messages: Array<DBMessage>): Array<UIMessage> {
-    return messages.map((message) => {
-      // Ensure all text parts have valid string values
-      const sanitizedParts = (message.parts as any[]).map((part: any) => {
-        if (part.type === 'text') {
-          return {
-            ...part,
-            text: String(part.text || ''), // Ensure text is always a string
-          };
-        }
-        return part;
+    console.log(
+      '🔍 Converting database messages to UI messages:',
+      messages.length,
+      'messages',
+    );
+
+    return messages.map((message, messageIndex) => {
+      console.log(`🔍 Processing message ${messageIndex}:`, {
+        id: message.id,
+        role: message.role,
+        parts: message.parts,
       });
 
-      return {
+      // Validate and log original parts before sanitization
+      if (message.parts && Array.isArray(message.parts)) {
+        (message.parts as any[]).forEach((part: any, partIndex: number) => {
+          if (part.type === 'text') {
+            console.log(
+              `🔍 Message ${messageIndex}, Part ${partIndex} - type: ${typeof part.text}, value:`,
+              part.text,
+            );
+            if (typeof part.text !== 'string') {
+              console.error(
+                `❌ DATABASE: Non-string text part found in message ${messageIndex}, part ${partIndex}:`,
+                part,
+              );
+              console.error(
+                '🚨 This is likely the source of the "text parts expect string value" error!',
+              );
+            }
+          }
+        });
+      }
+
+      // Ensure all text parts have valid string values
+      const sanitizedParts = (message.parts as any[]).map(
+        (part: any, partIndex: number) => {
+          if (part.type === 'text') {
+            const originalText = part.text;
+            const sanitizedText = String(part.text || '');
+
+            if (originalText !== sanitizedText) {
+              console.log(
+                `✅ DATABASE: Sanitized message ${messageIndex}, part ${partIndex} from`,
+                typeof originalText,
+                'to string:',
+                sanitizedText,
+              );
+            }
+
+            return {
+              ...part,
+              text: sanitizedText, // Ensure text is always a string
+            };
+          }
+          return part;
+        },
+      );
+
+      const uiMessage = {
         id: message.id,
         parts: sanitizedParts as UIMessage['parts'],
         role: message.role as UIMessage['role'],
@@ -98,6 +145,14 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
         experimental_attachments:
           (message.attachments as Array<Attachment>) ?? [],
       };
+
+      console.log(`✅ Converted message ${messageIndex}:`, {
+        id: uiMessage.id,
+        role: uiMessage.role,
+        parts: uiMessage.parts,
+      });
+
+      return uiMessage;
     });
   }
 
