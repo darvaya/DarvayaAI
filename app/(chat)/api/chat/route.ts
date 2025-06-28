@@ -18,22 +18,10 @@ import {
   recordPerformanceMetric,
   calculateCost,
 } from '@/lib/ai/phase3-monitor';
-import {
-  createDocumentToolName,
-  createDocumentExecutor,
-} from '@/lib/ai/tools/create-document-openai';
-import {
-  updateDocumentToolName,
-  updateDocumentExecutor,
-} from '@/lib/ai/tools/update-document-openai';
-import {
-  requestSuggestionsToolName,
-  requestSuggestionsExecutor,
-} from '@/lib/ai/tools/request-suggestions-openai';
-import {
-  weatherToolName,
-  getWeatherExecutor,
-} from '@/lib/ai/tools/get-weather-openai';
+import { createDocumentToolName } from '@/lib/ai/tools/create-document-openai';
+import { updateDocumentToolName } from '@/lib/ai/tools/update-document-openai';
+import { requestSuggestionsToolName } from '@/lib/ai/tools/request-suggestions-openai';
+import { weatherToolName } from '@/lib/ai/tools/get-weather-openai';
 import { entitlementsByUserType } from '@/lib/ai/entitlements';
 import { postRequestBodySchema, type PostRequestBody } from './schema';
 import { geolocation } from '@vercel/functions';
@@ -48,11 +36,7 @@ import { ChatSDKError } from '@/lib/errors';
 import * as Sentry from '@sentry/nextjs';
 import { getModelConfig } from '@/lib/ai/openrouter-client';
 import { CustomDataStreamWriter } from '@/lib/ai/streaming';
-import {
-  streamChatWithTools,
-  ToolRegistry,
-  toolRegistry,
-} from '@/lib/ai/tools-handler';
+import { streamChatWithTools, toolRegistry } from '@/lib/ai/tools-handler';
 
 // Import tools to ensure they are registered with the global registry
 import '@/lib/ai/tools/get-weather-openai';
