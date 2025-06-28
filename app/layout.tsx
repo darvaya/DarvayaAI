@@ -6,6 +6,7 @@ import Script from 'next/script';
 import './globals.css';
 import { SessionProvider } from 'next-auth/react';
 
+// Force rebuild to pick up new OpenRouter API key - 2025-06-28
 export const metadata: Metadata = {
   metadataBase: new URL('https://chat.vercel.ai'),
   title: 'Next.js Chatbot Template',
