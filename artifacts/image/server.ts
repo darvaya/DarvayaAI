@@ -35,10 +35,18 @@ export const imageDocumentHandler = createDocumentHandler<'image'>({
       const content = chunk.choices[0]?.delta?.content;
       if (content) {
         draftContent += content;
-        dataStream.writeData({
-          type: 'text-delta',
-          content: content,
-        });
+
+        // CRITICAL FIX: Use coordinated streaming method if available
+        if ('writeToolContentDelta' in dataStream) {
+          // This is a CoordinatedDataStreamWriter, use the proper method
+          (dataStream as any).writeToolContentDelta(content);
+        } else {
+          // Fallback for regular DataStreamWriter
+          dataStream.writeData({
+            type: 'text-delta',
+            content: content,
+          });
+        }
       }
     }
 
@@ -73,10 +81,18 @@ export const imageDocumentHandler = createDocumentHandler<'image'>({
       const content = chunk.choices[0]?.delta?.content;
       if (content) {
         draftContent += content;
-        dataStream.writeData({
-          type: 'text-delta',
-          content: content,
-        });
+
+        // CRITICAL FIX: Use coordinated streaming method if available
+        if ('writeToolContentDelta' in dataStream) {
+          // This is a CoordinatedDataStreamWriter, use the proper method
+          (dataStream as any).writeToolContentDelta(content);
+        } else {
+          // Fallback for regular DataStreamWriter
+          dataStream.writeData({
+            type: 'text-delta',
+            content: content,
+          });
+        }
       }
     }
 
