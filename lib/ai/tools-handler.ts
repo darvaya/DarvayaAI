@@ -197,6 +197,7 @@ export async function* streamChatWithTools(
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta;
 
+      // Handle content streaming
       if (delta?.content) {
         assistantMessage += delta.content;
         yield {
@@ -205,28 +206,55 @@ export async function* streamChatWithTools(
         };
       }
 
+      // Handle tool call streaming
       if (delta?.tool_calls) {
-        // Handle tool calls (simplified for now)
-        for (const toolCall of delta.tool_calls) {
-          if (toolCall.function) {
+        for (const toolCallDelta of delta.tool_calls) {
+          if (toolCallDelta.index !== undefined) {
+            // Start a new tool call or continue existing one
+            if (!toolCalls[toolCallDelta.index]) {
+              toolCalls[toolCallDelta.index] = {
+                id: toolCallDelta.id || '',
+                type: 'function',
+                function: {
+                  name: toolCallDelta.function?.name || '',
+                  arguments: toolCallDelta.function?.arguments || '',
+                },
+              };
+            } else {
+              // Accumulate arguments
+              if (toolCallDelta.function?.arguments) {
+                toolCalls[toolCallDelta.index].function.arguments +=
+                  toolCallDelta.function.arguments;
+              }
+            }
+
+            // Yield the tool call data
             yield {
               type: 'tool_call',
               data: {
-                id: toolCall.id,
-                name: toolCall.function.name,
-                arguments: toolCall.function.arguments,
+                id: toolCalls[toolCallDelta.index].id,
+                name: toolCalls[toolCallDelta.index].function.name,
+                arguments: toolCalls[toolCallDelta.index].function.arguments,
               },
             };
           }
         }
       }
+
+      // Check if stream is finished
+      if (chunk.choices[0]?.finish_reason) {
+        break;
+      }
     }
 
-    // If no tool calls, we're done
+    // If no tool calls were made, we're done
     if (toolCalls.length === 0) {
       yield {
         type: 'finish',
-        data: { content: assistantMessage },
+        data: {
+          content: assistantMessage,
+          usage: null, // Will be populated by the caller if available
+        },
       };
       break;
     }
@@ -252,6 +280,18 @@ export async function* streamChatWithTools(
           content: result.content,
         },
       };
+    }
+
+    // If we reached max steps, finish
+    if (stepCount >= maxSteps) {
+      yield {
+        type: 'finish',
+        data: {
+          content: assistantMessage,
+          usage: null,
+        },
+      };
+      break;
     }
   }
 }
