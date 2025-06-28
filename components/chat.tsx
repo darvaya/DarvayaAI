@@ -77,6 +77,7 @@ export function Chat({
       selectedVisibilityType: visibilityType,
     }),
     onFinish: () => {
+      console.log('🎉 Chat stream finished successfully');
       // Track assistant response
       trackChatMessage({
         chatId: id,
@@ -88,6 +89,7 @@ export function Chat({
       mutate(unstable_serialize(getChatHistoryPaginationKey));
     },
     onError: (error) => {
+      console.error('❌ Chat stream error:', error);
       if (error instanceof ChatSDKError) {
         toast({
           type: 'error',
@@ -101,6 +103,22 @@ export function Chat({
   const query = searchParams.get('query');
 
   const [hasAppendedQuery, setHasAppendedQuery] = useState(false);
+
+  // Add debugging for streaming status and data
+  useEffect(() => {
+    console.log('🔄 Chat status changed:', status);
+  }, [status]);
+
+  useEffect(() => {
+    if (data?.length) {
+      console.log(
+        '📊 New streaming data:',
+        data.length,
+        'chunks, latest:',
+        data[data.length - 1],
+      );
+    }
+  }, [data]);
 
   useEffect(() => {
     if (query && !hasAppendedQuery) {
