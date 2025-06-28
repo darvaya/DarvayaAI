@@ -13,22 +13,13 @@ export async function middleware(request: NextRequest) {
     return new Response('pong', { status: 200 });
   }
 
-  // Skip authentication for health check endpoint
-  if (pathname.startsWith('/api/health')) {
-    return NextResponse.next();
-  }
-
-  if (pathname.startsWith('/api/auth')) {
-    return NextResponse.next();
-  }
-
-  // Allow chat API - it handles its own authentication
-  if (pathname.startsWith('/api/chat')) {
-    return NextResponse.next();
-  }
-
-  // Allow debug endpoints
-  if (pathname.startsWith('/api/debug-')) {
+  // Skip authentication for these API endpoints
+  if (
+    pathname.startsWith('/api/health') ||
+    pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/chat') ||
+    pathname.startsWith('/api/debug-')
+  ) {
     return NextResponse.next();
   }
 
