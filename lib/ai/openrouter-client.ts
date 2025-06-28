@@ -8,6 +8,7 @@ const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 export const MODEL_MAPPINGS = {
   'chat-model': 'x-ai/grok-2-vision-1212',
   'chat-model-reasoning': 'openai/o1-mini', // Using OpenAI's reasoning model
+  'gemini-flash-lite': 'google/gemini-2.0-flash-lite-001',
   'title-model': 'x-ai/grok-2-1212',
   'artifact-model': 'x-ai/grok-2-1212',
   'image-model': 'x-ai/grok-2-vision-1212', // For now, will implement image generation separately
@@ -65,6 +66,11 @@ export const MODEL_CONFIGS = {
     temperature: 0.3,
     max_tokens: 8000,
     top_p: 0.95,
+  },
+  'gemini-flash-lite': {
+    temperature: 0.7,
+    max_tokens: 8000,
+    top_p: 0.9,
   },
   'title-model': {
     temperature: 0.5,

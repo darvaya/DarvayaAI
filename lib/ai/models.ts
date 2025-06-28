@@ -17,4 +17,9 @@ export const chatModels: Array<ChatModel> = [
     name: 'Reasoning model',
     description: 'Uses advanced reasoning',
   },
+  {
+    id: 'gemini-flash-lite',
+    name: 'Gemini Flash Lite',
+    description: "Google's fast multimodal model optimized for speed",
+  },
 ];

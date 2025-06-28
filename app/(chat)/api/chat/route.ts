@@ -11,8 +11,13 @@ import {
   saveChat,
   saveMessages,
 } from '@/lib/db/queries';
-import { generateUUID, } from '@/lib/utils';
+import { generateUUID } from '@/lib/utils';
 import { generateTitleFromUserMessage } from '../../actions';
+import { selectModelWithRouting } from '@/lib/ai/model-router';
+import {
+  recordPerformanceMetric,
+  calculateCost,
+} from '@/lib/ai/phase3-monitor';
 import {
   createDocumentToolName,
   createDocumentExecutor,
@@ -285,11 +290,25 @@ export async function POST(request: Request) {
         // Start streaming with OpenRouter
         (async () => {
           try {
-            const modelConfig = getModelConfig(
-              selectedChatModel as 'chat-model' | 'chat-model-reasoning',
+            // Apply Phase 3 model routing logic
+            const userContext = {
+              userId: session.user.id,
+              isGuest: session.user.type === 'guest',
+              sessionId: `session_${session.user.id}_${Date.now()}`,
+            };
+
+            // Route model selection (Phase 3: 5% traffic to Gemini Flash Lite)
+            const routedModel = selectModelWithRouting(
+              selectedChatModel as
+                | 'chat-model'
+                | 'chat-model-reasoning'
+                | 'gemini-flash-lite',
+              userContext,
             );
+
+            const modelConfig = getModelConfig(routedModel);
             const systemMessage = systemPrompt({
-              selectedChatModel,
+              selectedChatModel: routedModel,
               requestHints,
             });
 
@@ -301,9 +320,21 @@ export async function POST(request: Request) {
 
             // Get the actual model name from mappings
             const { getModelName } = await import('@/lib/ai/openrouter-client');
-            const modelName = getModelName(
-              selectedChatModel as 'chat-model' | 'chat-model-reasoning',
+            const modelName = getModelName(routedModel);
+
+            // Log routing decision for monitoring
+            console.log(
+              `🚀 Model routing: ${selectedChatModel} → ${routedModel} for user ${session.user.id}`,
             );
+
+            // Send routing info to data stream for monitoring
+            writer.writeData({
+              type: 'model-routing',
+              originalModel: selectedChatModel,
+              routedModel,
+              userId: session.user.id,
+              timestamp: new Date().toISOString(),
+            });
 
             const streamGenerator = streamChatWithTools(
               messagesWithSystem,
@@ -319,6 +350,13 @@ export async function POST(request: Request) {
             );
 
             let fullContent = '';
+            const startTime = Date.now();
+            let tokenUsage = {
+              prompt_tokens: 0,
+              completion_tokens: 0,
+              total_tokens: 0,
+            };
+
             for await (const chunk of streamGenerator) {
               if (chunk.type === 'content') {
                 fullContent += chunk.data;
@@ -334,6 +372,36 @@ export async function POST(request: Request) {
                   result: chunk.data,
                 });
               } else if (chunk.type === 'finish') {
+                // Record performance metrics for Phase 3 monitoring
+                const endTime = Date.now();
+                const latency = endTime - startTime;
+
+                // Extract token usage from chunk if available
+                if (chunk.data?.usage) {
+                  tokenUsage = chunk.data.usage;
+                }
+
+                const cost = calculateCost(routedModel, {
+                  promptTokens: tokenUsage.prompt_tokens || 0,
+                  completionTokens: tokenUsage.completion_tokens || 0,
+                });
+
+                // Record the performance metric
+                recordPerformanceMetric({
+                  model: routedModel,
+                  userId: session.user.id,
+                  sessionId: userContext.sessionId,
+                  timestamp: new Date().toISOString(),
+                  latency,
+                  tokenUsage: {
+                    promptTokens: tokenUsage.prompt_tokens || 0,
+                    completionTokens: tokenUsage.completion_tokens || 0,
+                    totalTokens: tokenUsage.total_tokens || 0,
+                  },
+                  cost,
+                  success: true,
+                });
+
                 // Save the assistant message
                 if (session.user?.id && fullContent) {
                   try {
