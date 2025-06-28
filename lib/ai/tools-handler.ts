@@ -168,16 +168,26 @@ export async function* streamChatWithTools(
       .map((name) => toolRegistry.getDefinition(name))
       .filter((tool): tool is OpenAITool => tool !== undefined);
 
-    // Make the API call
-    const stream = await client.chat.completions.create({
-      model,
-      messages: currentMessages,
-      stream: true,
-      tools: tools.length > 0 ? tools : undefined,
-      temperature: options.temperature,
-      max_tokens: options.max_tokens,
-      top_p: options.top_p,
-    });
+    // Make the API call with OpenRouter required headers
+    const stream = await client.chat.completions.create(
+      {
+        model,
+        messages: currentMessages,
+        stream: true,
+        tools: tools.length > 0 ? tools : undefined,
+        temperature: options.temperature,
+        max_tokens: options.max_tokens,
+        top_p: options.top_p,
+      },
+      {
+        headers: {
+          'HTTP-Referer':
+            process.env.OPENROUTER_SITE_URL ||
+            'https://darvayaai-production.up.railway.app',
+          'X-Title': process.env.OPENROUTER_APP_NAME || 'DarvayaAI',
+        },
+      },
+    );
 
     let assistantMessage = '';
     const toolCalls: OpenAI.Chat.Completions.ChatCompletionMessageToolCall[] =

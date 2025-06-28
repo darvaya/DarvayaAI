@@ -36,14 +36,11 @@ export function createOpenRouterClient() {
     throw new Error('OPENROUTER_API_KEY environment variable is required');
   }
 
+  // Create OpenAI client configured for OpenRouter
   const client = new OpenAI({
     baseURL: OPENROUTER_BASE_URL,
-    apiKey,
-    defaultHeaders: {
-      'HTTP-Referer':
-        process.env.OPENROUTER_SITE_URL || 'http://localhost:3000',
-      'X-Title': process.env.OPENROUTER_APP_NAME || 'AI Chatbot',
-    },
+    apiKey: apiKey,
+    // Don't set default headers here - OpenRouter expects them per request
   });
 
   console.log('🔧 Debug: OpenRouter client created successfully');
