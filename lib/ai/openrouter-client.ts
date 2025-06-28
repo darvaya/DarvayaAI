@@ -24,13 +24,6 @@ export function createOpenRouterClient() {
   }
 
   const apiKey = process.env.OPENROUTER_API_KEY;
-  console.log('🔧 Debug: OpenRouter API key exists:', !!apiKey);
-  console.log(
-    '🔧 Debug: API key starts with:',
-    `${apiKey?.substring(0, 15)}...`,
-  );
-  console.log('🔧 Debug: NODE_ENV:', process.env.NODE_ENV);
-  console.log('🔧 Debug: isTestEnvironment:', isTestEnvironment);
 
   if (!apiKey) {
     throw new Error('OPENROUTER_API_KEY environment variable is required');
@@ -43,7 +36,6 @@ export function createOpenRouterClient() {
     // Don't set default headers here - OpenRouter expects them per request
   });
 
-  console.log('🔧 Debug: OpenRouter client created successfully');
   return client;
 }
 
