@@ -140,6 +140,11 @@ export function Chat({
   // Add debugging for streaming status and data
   useEffect(() => {
     console.log('🔄 Chat status changed:', status);
+    if (status === 'streaming') {
+      console.log('📡 Starting to stream...');
+    } else if (status === 'error') {
+      console.log('❌ Stream error occurred');
+    }
   }, [status]);
 
   useEffect(() => {
@@ -150,8 +155,20 @@ export function Chat({
         'chunks, latest:',
         data[data.length - 1],
       );
+      console.log('📈 Real-time streaming is working!');
     }
   }, [data]);
+
+  // Track messages for streaming behavior
+  useEffect(() => {
+    console.log('💬 Messages updated:', messages.length, 'total messages');
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage?.role === 'assistant') {
+      console.log(
+        `🤖 Assistant message received: ${lastMessage.content?.substring(0, 50)}...`,
+      );
+    }
+  }, [messages]);
 
   useEffect(() => {
     if (query && !hasAppendedQuery) {

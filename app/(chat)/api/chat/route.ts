@@ -474,16 +474,31 @@ export async function POST(request: Request) {
     console.log('🔧 Using direct streaming (Redis resumable streams disabled)');
     return new Response(stream, {
       headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        // SSE format for maximum streaming compatibility
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
         Pragma: 'no-cache',
         Expires: '0',
         Connection: 'keep-alive',
-        'X-Accel-Buffering': 'no', // Disable nginx buffering
+        'Keep-Alive': 'timeout=15, max=100',
+
+        // Anti-buffering headers for production proxies
+        'X-Accel-Buffering': 'no', // Nginx
+        'X-Proxy-Buffering': 'no', // Generic proxy
+        'Proxy-Buffering': 'no', // Additional proxy header
+        'X-Content-Type-Options': 'nosniff',
+
+        // CORS for production
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Headers':
+          'Content-Type, Authorization, Cache-Control',
+        'Access-Control-Expose-Headers': 'Content-Type, Cache-Control',
+
+        // Explicit streaming directives
         'Transfer-Encoding': 'chunked',
+        'X-Streaming': 'true',
+        'X-Railway-Streaming': 'enabled', // Railway-specific hint
       },
     });
   } catch (error) {
