@@ -70,12 +70,31 @@ export function Chat({
     sendExtraMessageFields: true,
     generateId: generateUUID,
     fetch: fetchWithErrorHandlers,
-    experimental_prepareRequestBody: (body) => ({
-      id,
-      message: body.messages.at(-1),
-      selectedChatModel: initialChatModel,
-      selectedVisibilityType: visibilityType,
-    }),
+    experimental_prepareRequestBody: (body) => {
+      const lastMessage = body.messages.at(-1);
+
+      // Transform AI SDK message format to our API schema format
+      const transformedMessage = {
+        id: lastMessage?.id || generateUUID(),
+        createdAt: lastMessage?.createdAt || new Date(),
+        role: lastMessage?.role || 'user',
+        content: lastMessage?.content || '',
+        parts: [
+          {
+            type: 'text' as const,
+            text: String(lastMessage?.content || ''), // Ensure it's a string
+          },
+        ],
+        experimental_attachments: lastMessage?.experimental_attachments || [],
+      };
+
+      return {
+        id,
+        message: transformedMessage,
+        selectedChatModel: initialChatModel,
+        selectedVisibilityType: visibilityType,
+      };
+    },
     onFinish: () => {
       console.log('🎉 Chat stream finished successfully');
       // Track assistant response
