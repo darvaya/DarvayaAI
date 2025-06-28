@@ -22,11 +22,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Skip authentication for test endpoints
-  if (pathname.startsWith('/api/test-')) {
-    return NextResponse.next();
-  }
-
   // Allow chat API - it handles its own authentication
   if (pathname.startsWith('/api/chat')) {
     return NextResponse.next();
