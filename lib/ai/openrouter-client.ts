@@ -24,11 +24,19 @@ export function createOpenRouterClient() {
   }
 
   const apiKey = process.env.OPENROUTER_API_KEY;
+  console.log('🔧 Debug: OpenRouter API key exists:', !!apiKey);
+  console.log(
+    '🔧 Debug: API key starts with:',
+    `${apiKey?.substring(0, 15)}...`,
+  );
+  console.log('🔧 Debug: NODE_ENV:', process.env.NODE_ENV);
+  console.log('🔧 Debug: isTestEnvironment:', isTestEnvironment);
+
   if (!apiKey) {
     throw new Error('OPENROUTER_API_KEY environment variable is required');
   }
 
-  return new OpenAI({
+  const client = new OpenAI({
     baseURL: OPENROUTER_BASE_URL,
     apiKey,
     defaultHeaders: {
@@ -37,6 +45,9 @@ export function createOpenRouterClient() {
       'X-Title': process.env.OPENROUTER_APP_NAME || 'AI Chatbot',
     },
   });
+
+  console.log('🔧 Debug: OpenRouter client created successfully');
+  return client;
 }
 
 // Global client instance
