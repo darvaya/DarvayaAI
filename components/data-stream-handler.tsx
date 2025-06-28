@@ -20,8 +20,12 @@ export type DataStreamDelta = {
     | 'kind'
     | 'tool-call'
     | 'tool-result'
+    | 'tool-start'
+    | 'tool-complete'
+    | 'tool-error'
     | 'model-routing';
   content: string | Suggestion;
+  data?: any; // For tool events that use data field instead of content
 };
 
 export function DataStreamHandler({
@@ -41,25 +45,50 @@ export function DataStreamHandler({
     lastProcessedIndex.current = dataStream.length - 1;
 
     (newDeltas as DataStreamDelta[]).forEach((delta: DataStreamDelta) => {
-      // Handle nested serialized data from the updated streaming format
+      // ENHANCED: Better deserialization handling for all tool events
       let processedDelta = delta;
-      if (
-        delta.type === 'tool-call' ||
-        delta.type === 'tool-result' ||
-        delta.type === 'model-routing'
-      ) {
+
+      const isToolEvent = [
+        'tool-call',
+        'tool-result',
+        'tool-start',
+        'tool-complete',
+        'tool-error',
+        'model-routing',
+      ].includes(delta.type);
+
+      if (isToolEvent) {
         try {
-          // Parse the serialized content if it's a string
+          // Handle both pre-serialized and direct tool event data
           if (typeof delta.content === 'string') {
-            const parsedContent = JSON.parse(delta.content);
-            processedDelta = {
-              ...delta,
-              content: parsedContent,
-            };
+            try {
+              const parsedContent = JSON.parse(delta.content);
+              processedDelta = {
+                ...delta,
+                content: parsedContent,
+                data: parsedContent, // Also populate data field for consistency
+              };
+            } catch (parseError) {
+              // If content parsing fails, try data field
+              if (delta.data && typeof delta.data === 'string') {
+                const parsedData = JSON.parse(delta.data);
+                processedDelta = {
+                  ...delta,
+                  data: parsedData,
+                };
+              } else {
+                // Keep original if no parsing works
+                processedDelta = delta;
+              }
+            }
+          } else if (delta.data) {
+            // Data field already parsed, use as-is
+            processedDelta = delta;
           }
         } catch (error) {
-          console.warn('Failed to parse serialized delta content:', error);
-          // Use original delta if parsing fails
+          console.warn(`Failed to parse ${delta.type} event:`, error);
+          // Skip malformed events to prevent UI crashes
+          return;
         }
       }
 
@@ -113,6 +142,31 @@ export function DataStreamHandler({
             return {
               ...draftArtifact,
               status: 'idle',
+            };
+
+          // NEW: Handle coordinated tool execution events
+          case 'tool-start':
+            return {
+              ...draftArtifact,
+              status: 'streaming',
+              isVisible: true, // Make artifact visible when tool starts
+            };
+
+          case 'tool-complete':
+            return {
+              ...draftArtifact,
+              status: 'idle', // Tool completed successfully
+            };
+
+          case 'tool-error':
+            // Log error for debugging but keep artifact visible
+            console.warn(
+              'Tool execution error:',
+              processedDelta.data?.error || processedDelta.content,
+            );
+            return {
+              ...draftArtifact,
+              status: 'idle', // Reset to idle state on error
             };
 
           default:

@@ -89,6 +89,35 @@ export const codeArtifact = new Artifact<'code', Metadata>({
         status: 'streaming',
       }));
     }
+
+    // ENHANCED: Handle coordinated tool execution events
+    if (streamPart.type === 'tool-start') {
+      console.log('💻 Code artifact: Tool started', streamPart.data);
+      setArtifact((draftArtifact) => ({
+        ...draftArtifact,
+        status: 'streaming',
+        isVisible: true, // Make artifact visible when tool starts
+      }));
+    }
+
+    if (streamPart.type === 'tool-complete') {
+      console.log('💻 Code artifact: Tool completed', streamPart.data);
+      setArtifact((draftArtifact) => ({
+        ...draftArtifact,
+        status: 'idle', // Tool completed successfully
+      }));
+    }
+
+    if (streamPart.type === 'tool-error') {
+      console.warn(
+        '💻 Code artifact: Tool error',
+        streamPart.data?.error || streamPart.content,
+      );
+      setArtifact((draftArtifact) => ({
+        ...draftArtifact,
+        status: 'idle', // Reset to idle on error
+      }));
+    }
   },
   content: ({ metadata, setMetadata, ...props }) => {
     return (

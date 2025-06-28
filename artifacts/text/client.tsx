@@ -55,6 +55,41 @@ export const textArtifact = new Artifact<'text', TextArtifactMetadata>({
         };
       });
     }
+
+    // ENHANCED: Handle coordinated tool execution events
+    if (streamPart.type === 'tool-start') {
+      console.log('📝 Text artifact: Tool started', streamPart.data);
+      setArtifact((draftArtifact) => {
+        return {
+          ...draftArtifact,
+          status: 'streaming',
+          isVisible: true, // Make artifact visible when tool starts
+        };
+      });
+    }
+
+    if (streamPart.type === 'tool-complete') {
+      console.log('📝 Text artifact: Tool completed', streamPart.data);
+      setArtifact((draftArtifact) => {
+        return {
+          ...draftArtifact,
+          status: 'idle', // Tool completed successfully
+        };
+      });
+    }
+
+    if (streamPart.type === 'tool-error') {
+      console.warn(
+        '📝 Text artifact: Tool error',
+        streamPart.data?.error || streamPart.content,
+      );
+      setArtifact((draftArtifact) => {
+        return {
+          ...draftArtifact,
+          status: 'idle', // Reset to idle on error
+        };
+      });
+    }
   },
   content: ({
     mode,
@@ -90,8 +125,7 @@ export const textArtifact = new Artifact<'text', TextArtifactMetadata>({
             onSaveContent={onSaveContent}
           />
 
-          {metadata?.suggestions &&
-          metadata.suggestions.length > 0 ? (
+          {metadata?.suggestions && metadata.suggestions.length > 0 ? (
             <div className="md:hidden h-dvh w-12 shrink-0" />
           ) : null}
         </div>

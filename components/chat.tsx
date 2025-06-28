@@ -126,7 +126,7 @@ export function Chat({
   const { artifact, setArtifact, setMetadata } = useArtifact();
   const lastProcessedIndex = useRef(-1);
 
-  // Process data stream for artifacts
+  // ENHANCED: Process data stream for artifacts with coordinated tool events
   useEffect(() => {
     if (!data?.length) return;
 
@@ -134,13 +134,42 @@ export function Chat({
     lastProcessedIndex.current = data.length - 1;
 
     newDeltas.forEach((delta: any) => {
+      // Enhanced deserialization for tool events
+      let processedDelta = delta;
+      const isToolEvent = [
+        'tool-call',
+        'tool-result',
+        'tool-start',
+        'tool-complete',
+        'tool-error',
+        'model-routing',
+      ].includes(delta.type);
+
+      if (isToolEvent && typeof delta.content === 'string') {
+        try {
+          const parsedContent = JSON.parse(delta.content);
+          processedDelta = {
+            ...delta,
+            content: parsedContent,
+            data: parsedContent,
+          };
+        } catch (error) {
+          // Use original delta if parsing fails
+          console.warn(
+            `Failed to parse ${delta.type} in Chat component:`,
+            error,
+          );
+          processedDelta = delta;
+        }
+      }
+
       const artifactDefinition = artifactDefinitions.find(
         (artifactDefinition) => artifactDefinition.kind === artifact.kind,
       );
 
       if (artifactDefinition?.onStreamPart) {
         artifactDefinition.onStreamPart({
-          streamPart: delta,
+          streamPart: processedDelta,
           setArtifact,
           setMetadata,
         });
@@ -151,25 +180,25 @@ export function Chat({
           return { ...initialArtifactData, status: 'streaming' };
         }
 
-        switch (delta.type) {
+        switch (processedDelta.type) {
           case 'id':
             return {
               ...draftArtifact,
-              documentId: delta.content as string,
+              documentId: processedDelta.content as string,
               status: 'streaming',
             };
 
           case 'title':
             return {
               ...draftArtifact,
-              title: delta.content as string,
+              title: processedDelta.content as string,
               status: 'streaming',
             };
 
           case 'kind':
             return {
               ...draftArtifact,
-              kind: delta.content as any,
+              kind: processedDelta.content as any,
               status: 'streaming',
             };
 
@@ -184,6 +213,32 @@ export function Chat({
             return {
               ...draftArtifact,
               status: 'idle',
+            };
+
+          // NEW: Handle coordinated tool execution events
+          case 'tool-start':
+            console.log('🔧 Tool started:', processedDelta.data);
+            return {
+              ...draftArtifact,
+              status: 'streaming',
+              isVisible: true, // Make artifact visible when tool starts
+            };
+
+          case 'tool-complete':
+            console.log('✅ Tool completed:', processedDelta.data);
+            return {
+              ...draftArtifact,
+              status: 'idle', // Tool completed successfully
+            };
+
+          case 'tool-error':
+            console.warn(
+              '❌ Tool error:',
+              processedDelta.data?.error || processedDelta.content,
+            );
+            return {
+              ...draftArtifact,
+              status: 'idle', // Reset to idle state on error
             };
 
           default:
