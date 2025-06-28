@@ -391,36 +391,94 @@ export async function POST(request: Request) {
               total_tokens: 0,
             };
 
-            for await (const chunk of streamGenerator) {
-              if (chunk.type === 'content') {
-                fullContent += chunk.data;
-                writer.writeText(chunk.data);
-              } else if (chunk.type === 'tool_call') {
-                writer.writeData({
-                  type: 'tool-call',
-                  toolCall: chunk.data,
-                });
-              } else if (chunk.type === 'tool_result') {
-                writer.writeData({
-                  type: 'tool-result',
-                  result: chunk.data,
-                });
-              } else if (chunk.type === 'finish') {
-                // Record performance metrics for Phase 3 monitoring
+            let streamCompleted = false;
+
+            try {
+              for await (const chunk of streamGenerator) {
+                if (chunk.type === 'content') {
+                  fullContent += chunk.data;
+                  writer.writeText(chunk.data);
+                } else if (chunk.type === 'tool_call') {
+                  writer.writeData({
+                    type: 'tool-call',
+                    toolCall: chunk.data,
+                  });
+                } else if (chunk.type === 'tool_result') {
+                  writer.writeData({
+                    type: 'tool-result',
+                    result: chunk.data,
+                  });
+                } else if (chunk.type === 'finish') {
+                  streamCompleted = true;
+
+                  // Record performance metrics for Phase 3 monitoring
+                  const endTime = Date.now();
+                  const latency = endTime - startTime;
+
+                  // Extract token usage from chunk if available
+                  if (chunk.data?.usage) {
+                    tokenUsage = chunk.data.usage;
+                  }
+
+                  const cost = calculateCost(routedModel, {
+                    promptTokens: tokenUsage.prompt_tokens || 0,
+                    completionTokens: tokenUsage.completion_tokens || 0,
+                  });
+
+                  // Record the performance metric
+                  recordPerformanceMetric({
+                    model: routedModel,
+                    userId: session.user.id,
+                    sessionId: userContext.sessionId,
+                    timestamp: new Date().toISOString(),
+                    latency,
+                    tokenUsage: {
+                      promptTokens: tokenUsage.prompt_tokens || 0,
+                      completionTokens: tokenUsage.completion_tokens || 0,
+                      totalTokens: tokenUsage.total_tokens || 0,
+                    },
+                    cost,
+                    success: true,
+                  });
+
+                  // Save the assistant message
+                  if (session.user?.id && fullContent) {
+                    try {
+                      const assistantId = generateUUID();
+
+                      await saveMessages({
+                        messages: [
+                          {
+                            id: assistantId,
+                            chatId: id,
+                            role: 'assistant',
+                            parts: [{ type: 'text', text: fullContent }],
+                            attachments: [],
+                            createdAt: new Date(),
+                          },
+                        ],
+                      });
+                    } catch (error) {
+                      console.error('Failed to save chat:', error);
+                    }
+                  }
+                  break;
+                }
+              }
+
+              // If the stream didn't complete naturally, ensure we still finish properly
+              if (!streamCompleted && fullContent) {
+                console.log(
+                  '🔧 Stream did not complete naturally, finishing manually',
+                );
+
                 const endTime = Date.now();
                 const latency = endTime - startTime;
-
-                // Extract token usage from chunk if available
-                if (chunk.data?.usage) {
-                  tokenUsage = chunk.data.usage;
-                }
-
                 const cost = calculateCost(routedModel, {
                   promptTokens: tokenUsage.prompt_tokens || 0,
                   completionTokens: tokenUsage.completion_tokens || 0,
                 });
 
-                // Record the performance metric
                 recordPerformanceMetric({
                   model: routedModel,
                   userId: session.user.id,
@@ -457,18 +515,36 @@ export async function POST(request: Request) {
                     console.error('Failed to save chat:', error);
                   }
                 }
-                break;
               }
+            } catch (error) {
+              console.error('Streaming error:', error);
+              writer.writeData({
+                type: 'error',
+                error: 'An error occurred while processing your request.',
+              });
+
+              // Record failed performance metric
+              const endTime = Date.now();
+              const latency = endTime - startTime;
+
+              recordPerformanceMetric({
+                model: routedModel,
+                userId: session.user.id,
+                sessionId: userContext.sessionId,
+                timestamp: new Date().toISOString(),
+                latency,
+                tokenUsage: {
+                  promptTokens: 0,
+                  completionTokens: 0,
+                  totalTokens: 0,
+                },
+                cost: 0,
+                success: false,
+              });
+            } finally {
+              console.log('🔧 Closing stream writer');
+              writer.close();
             }
-          } catch (error) {
-            console.error('Streaming error:', error);
-            writer.writeData({
-              type: 'error',
-              error: 'An error occurred while processing your request.',
-            });
-          } finally {
-            writer.close();
-          }
         })();
       },
     });
