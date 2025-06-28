@@ -2,7 +2,7 @@
 
 import type { Attachment, UIMessage } from 'ai';
 import { useChat } from '@ai-sdk/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import useSWR, { useSWRConfig } from 'swr';
 import { ChatHeader } from '@/components/chat-header';
 import type { Vote } from '@/lib/db/schema';
@@ -11,7 +11,12 @@ import { Artifact } from './artifact';
 import { MultimodalInput } from './multimodal-input';
 import { Messages } from './messages';
 import type { VisibilityType } from './visibility-selector';
-import { useArtifactSelector } from '@/hooks/use-artifact';
+import {
+  useArtifactSelector,
+  useArtifact,
+  initialArtifactData,
+} from '@/hooks/use-artifact';
+import { artifactDefinitions } from './artifact';
 import { unstable_serialize } from 'swr/infinite';
 import { getChatHistoryPaginationKey } from './sidebar-history';
 import { toast } from './toast';
@@ -116,6 +121,77 @@ export function Chat({
 
   const [attachments, setAttachments] = useState<Array<Attachment>>([]);
   const isArtifactVisible = useArtifactSelector((state) => state.isVisible);
+
+  // Add artifact handling from DataStreamHandler
+  const { artifact, setArtifact, setMetadata } = useArtifact();
+  const lastProcessedIndex = useRef(-1);
+
+  // Process data stream for artifacts
+  useEffect(() => {
+    if (!data?.length) return;
+
+    const newDeltas = data.slice(lastProcessedIndex.current + 1);
+    lastProcessedIndex.current = data.length - 1;
+
+    newDeltas.forEach((delta: any) => {
+      const artifactDefinition = artifactDefinitions.find(
+        (artifactDefinition) => artifactDefinition.kind === artifact.kind,
+      );
+
+      if (artifactDefinition?.onStreamPart) {
+        artifactDefinition.onStreamPart({
+          streamPart: delta,
+          setArtifact,
+          setMetadata,
+        });
+      }
+
+      setArtifact((draftArtifact) => {
+        if (!draftArtifact) {
+          return { ...initialArtifactData, status: 'streaming' };
+        }
+
+        switch (delta.type) {
+          case 'id':
+            return {
+              ...draftArtifact,
+              documentId: delta.content as string,
+              status: 'streaming',
+            };
+
+          case 'title':
+            return {
+              ...draftArtifact,
+              title: delta.content as string,
+              status: 'streaming',
+            };
+
+          case 'kind':
+            return {
+              ...draftArtifact,
+              kind: delta.content as any,
+              status: 'streaming',
+            };
+
+          case 'clear':
+            return {
+              ...draftArtifact,
+              content: '',
+              status: 'streaming',
+            };
+
+          case 'finish':
+            return {
+              ...draftArtifact,
+              status: 'idle',
+            };
+
+          default:
+            return draftArtifact;
+        }
+      });
+    });
+  }, [data, setArtifact, setMetadata, artifact]);
 
   useAutoResume({
     autoResume,
