@@ -48,7 +48,17 @@ import { ChatSDKError } from '@/lib/errors';
 import * as Sentry from '@sentry/nextjs';
 import { getModelConfig } from '@/lib/ai/openrouter-client';
 import { CustomDataStreamWriter } from '@/lib/ai/streaming';
-import { streamChatWithTools, ToolRegistry } from '@/lib/ai/tools-handler';
+import {
+  streamChatWithTools,
+  ToolRegistry,
+  toolRegistry,
+} from '@/lib/ai/tools-handler';
+
+// Import tools to ensure they are registered with the global registry
+import '@/lib/ai/tools/get-weather-openai';
+import '@/lib/ai/tools/create-document-openai';
+import '@/lib/ai/tools/update-document-openai';
+import '@/lib/ai/tools/request-suggestions-openai';
 
 export const maxDuration = 60;
 
@@ -215,7 +225,6 @@ export async function POST(request: Request) {
         }));
 
         // Set up tools for non-reasoning models
-        const toolRegistry = new ToolRegistry();
         const availableTools =
           selectedChatModel === 'chat-model-reasoning'
             ? []
@@ -226,100 +235,12 @@ export async function POST(request: Request) {
                 requestSuggestionsToolName,
               ];
 
-        if (availableTools.length > 0) {
-          toolRegistry.register(
-            weatherToolName,
-            {
-              type: 'function',
-              function: {
-                name: weatherToolName,
-                description: 'Get current weather for a location',
-                parameters: {
-                  type: 'object',
-                  properties: {
-                    latitude: { type: 'number', minimum: -90, maximum: 90 },
-                    longitude: { type: 'number', minimum: -180, maximum: 180 },
-                  },
-                  required: ['latitude', 'longitude'],
-                },
-              },
-            },
-            getWeatherExecutor,
-          );
-
-          toolRegistry.register(
-            createDocumentToolName,
-            {
-              type: 'function',
-              function: {
-                name: createDocumentToolName,
-                description: 'Create a new document/artifact',
-                parameters: {
-                  type: 'object',
-                  properties: {
-                    kind: {
-                      type: 'string',
-                      enum: ['text', 'code', 'image', 'sheet'],
-                      description: 'The type of document to create',
-                    },
-                    title: { type: 'string', description: 'Document title' },
-                    content: {
-                      type: 'string',
-                      description: 'Document content',
-                    },
-                  },
-                  required: ['kind', 'title', 'content'],
-                },
-              },
-            },
-            createDocumentExecutor,
-          );
-
-          toolRegistry.register(
-            updateDocumentToolName,
-            {
-              type: 'function',
-              function: {
-                name: updateDocumentToolName,
-                description: 'Update an existing document',
-                parameters: {
-                  type: 'object',
-                  properties: {
-                    documentId: {
-                      type: 'string',
-                      description: 'Document ID to update',
-                    },
-                    content: { type: 'string', description: 'New content' },
-                  },
-                  required: ['documentId', 'content'],
-                },
-              },
-            },
-            updateDocumentExecutor,
-          );
-
-          toolRegistry.register(
-            requestSuggestionsToolName,
-            {
-              type: 'function',
-              function: {
-                name: requestSuggestionsToolName,
-                description: 'Request follow-up suggestions',
-                parameters: {
-                  type: 'object',
-                  properties: {
-                    message: {
-                      type: 'string',
-                      description: 'Current message context',
-                    },
-                  },
-                  required: ['message'],
-                },
-              },
-            },
-            requestSuggestionsExecutor,
-          );
-        }
+        // Tools are already imported at the top level and registered with the global registry
+        console.log('🔧 Available tools:', availableTools);
+        console.log(
+          '🔧 Registered tools in global registry:',
+          toolRegistry.getToolNames(),
+        );
 
         // Start streaming with OpenRouter
         (async () => {

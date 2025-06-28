@@ -165,8 +165,14 @@ export async function* streamChatWithTools(
 
     // Get tool definitions for enabled tools
     const tools = enabledTools
-      .map((name) => toolRegistry.getDefinition(name))
+      .map((name) => {
+        const tool = toolRegistry.getDefinition(name);
+        console.log(`🔧 Tool lookup: ${name} ->`, tool ? 'FOUND' : 'NOT FOUND');
+        return tool;
+      })
       .filter((tool): tool is OpenAITool => tool !== undefined);
+
+    console.log(`🔧 Step ${stepCount}: Sending ${tools.length} tools to API`);
 
     // Make the API call with OpenRouter required headers
     const stream = await client.chat.completions.create(
@@ -260,7 +266,14 @@ export async function* streamChatWithTools(
     }
 
     // Execute tool calls and continue conversation
+    console.log(
+      `🔧 Executing ${toolCalls.length} tool calls:`,
+      toolCalls.map((tc) => tc.function.name),
+    );
     const toolResults = await processToolCalls(toolCalls, context);
+    console.log(
+      `🔧 Tool execution completed, got ${toolResults.length} results`,
+    );
 
     // Add assistant message and tool results to conversation
     currentMessages.push({
