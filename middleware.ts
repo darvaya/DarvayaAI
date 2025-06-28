@@ -27,6 +27,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Allow debug endpoints
+  if (pathname.startsWith('/api/debug-')) {
+    return NextResponse.next();
+  }
+
   const token = await getToken({
     req: request,
     secret: process.env.AUTH_SECRET,
