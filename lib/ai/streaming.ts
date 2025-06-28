@@ -35,20 +35,66 @@ export class CustomDataStreamWriter {
   writeData(data: any) {
     if (!this.controller) return;
 
+    // CRITICAL FIX: Validate and fix message parts before serialization
+    if (data && typeof data === 'object') {
+      // Fix any message parts that have text fields
+      if (data.parts && Array.isArray(data.parts)) {
+        console.log('🔍 Validating streaming data parts:', data.parts);
+        data.parts.forEach((part: any, index: number) => {
+          if (part.type === 'text' && typeof part.text !== 'string') {
+            console.error(
+              `❌ Streaming: Non-string text part at index ${index}:`,
+              part,
+            );
+            part.text = String(part.text || '');
+            console.log(
+              `✅ Streaming: Auto-fixed part ${index} to string:`,
+              part.text,
+            );
+          }
+        });
+      }
+
+      // Fix nested message objects
+      if (
+        data.message &&
+        data.message.parts &&
+        Array.isArray(data.message.parts)
+      ) {
+        console.log('🔍 Validating nested message parts:', data.message.parts);
+        data.message.parts.forEach((part: any, index: number) => {
+          if (part.type === 'text' && typeof part.text !== 'string') {
+            console.error(
+              `❌ Streaming: Non-string nested text part at index ${index}:`,
+              part,
+            );
+            part.text = String(part.text || '');
+            console.log(
+              `✅ Streaming: Auto-fixed nested part ${index} to string:`,
+              part.text,
+            );
+          }
+        });
+      }
+
+      // Fix any content field that should be string
+      if (data?.content && typeof data?.content !== 'string') {
+        console.error('❌ Streaming: Non-string content:', data.content);
+        data.content = String(data.content);
+        console.log(
+          '✅ Streaming: Auto-fixed content to string:',
+          data.content,
+        );
+      }
+    }
+
     // Ensure data is properly serialized for Redis compatibility
     let serializedData: string;
     if (typeof data === 'string') {
       serializedData = data;
     } else if (data && typeof data === 'object') {
-      // If data has a 'data' field that's already serialized, use it
-      if (data.data && typeof data.data === 'string') {
-        serializedData = JSON.stringify({
-          type: data.type,
-          content: JSON.parse(data.data),
-        });
-      } else {
-        serializedData = JSON.stringify(data);
-      }
+      // Simplified serialization to avoid corruption
+      serializedData = JSON.stringify(data);
     } else {
       serializedData = JSON.stringify(data);
     }
