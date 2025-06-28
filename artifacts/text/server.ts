@@ -1,32 +1,42 @@
-import { smoothStream, streamText } from 'ai';
-import { myProvider } from '@/lib/ai/providers';
+import { openRouterClient } from '@/lib/ai/openrouter-client';
 import { createDocumentHandler } from '@/lib/artifacts/server';
 import { updateDocumentPrompt } from '@/lib/ai/prompts';
 
 export const textDocumentHandler = createDocumentHandler<'text'>({
   kind: 'text',
   onCreateDocument: async ({ title, dataStream }) => {
+    const client = openRouterClient();
+    if (!client) {
+      throw new Error('OpenRouter client not initialized');
+    }
+
     let draftContent = '';
 
-    const { fullStream } = streamText({
-      model: myProvider.languageModel('artifact-model'),
-      system:
-        'Write about the given topic. Markdown is supported. Use headings wherever appropriate.',
-      experimental_transform: smoothStream({ chunking: 'word' }),
-      prompt: title,
+    const stream = await client.chat.completions.create({
+      model: 'x-ai/grok-2-1212', // artifact-model
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Write about the given topic. Markdown is supported. Use headings wherever appropriate.',
+        },
+        {
+          role: 'user',
+          content: title,
+        },
+      ],
+      stream: true,
+      temperature: 0.7,
+      max_tokens: 2000,
     });
 
-    for await (const delta of fullStream) {
-      const { type } = delta;
-
-      if (type === 'text-delta') {
-        const { textDelta } = delta;
-
-        draftContent += textDelta;
-
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content;
+      if (content) {
+        draftContent += content;
         dataStream.writeData({
           type: 'text-delta',
-          content: textDelta,
+          content: content,
         });
       }
     }
@@ -34,33 +44,37 @@ export const textDocumentHandler = createDocumentHandler<'text'>({
     return draftContent;
   },
   onUpdateDocument: async ({ document, description, dataStream }) => {
+    const client = openRouterClient();
+    if (!client) {
+      throw new Error('OpenRouter client not initialized');
+    }
+
     let draftContent = '';
 
-    const { fullStream } = streamText({
-      model: myProvider.languageModel('artifact-model'),
-      system: updateDocumentPrompt(document.content, 'text'),
-      experimental_transform: smoothStream({ chunking: 'word' }),
-      prompt: description,
-      experimental_providerMetadata: {
-        openai: {
-          prediction: {
-            type: 'content',
-            content: document.content,
-          },
+    const stream = await client.chat.completions.create({
+      model: 'x-ai/grok-2-1212', // artifact-model
+      messages: [
+        {
+          role: 'system',
+          content: updateDocumentPrompt(document.content, 'text'),
         },
-      },
+        {
+          role: 'user',
+          content: description,
+        },
+      ],
+      stream: true,
+      temperature: 0.7,
+      max_tokens: 2000,
     });
 
-    for await (const delta of fullStream) {
-      const { type } = delta;
-
-      if (type === 'text-delta') {
-        const { textDelta } = delta;
-
-        draftContent += textDelta;
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content;
+      if (content) {
+        draftContent += content;
         dataStream.writeData({
           type: 'text-delta',
-          content: textDelta,
+          content: content,
         });
       }
     }

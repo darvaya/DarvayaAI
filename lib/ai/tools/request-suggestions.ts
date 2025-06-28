@@ -4,7 +4,7 @@ import { type DataStreamWriter, streamObject, tool } from 'ai';
 import { getDocumentById, saveSuggestions } from '@/lib/db/queries';
 import type { Suggestion } from '@/lib/db/schema';
 import { generateUUID } from '@/lib/utils';
-import { myProvider } from '../providers';
+import { openRouterClient } from '../openrouter-client';
 
 interface RequestSuggestionsProps {
   session: Session;
@@ -31,39 +31,62 @@ export const requestSuggestions = ({
         };
       }
 
+      const client = openRouterClient();
+      if (!client) {
+        throw new Error('OpenRouter client not initialized');
+      }
+
       const suggestions: Array<
         Omit<Suggestion, 'userId' | 'createdAt' | 'documentCreatedAt'>
       > = [];
 
-      const { elementStream } = streamObject({
-        model: myProvider.languageModel('artifact-model'),
-        system:
-          'You are a help writing assistant. Given a piece of writing, please offer suggestions to improve the piece of writing and describe the change. It is very important for the edits to contain full sentences instead of just words. Max 5 suggestions.',
-        prompt: document.content,
-        output: 'array',
-        schema: z.object({
-          originalSentence: z.string().describe('The original sentence'),
-          suggestedSentence: z.string().describe('The suggested sentence'),
-          description: z.string().describe('The description of the suggestion'),
-        }),
+      // Since we can't use streamObject with OpenRouter directly, let's make a regular call
+      const response = await client.chat.completions.create({
+        model: 'x-ai/grok-2-1212', // artifact-model
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a help writing assistant. Given a piece of writing, please offer suggestions to improve the piece of writing and describe the change. It is very important for the edits to contain full sentences instead of just words. Max 5 suggestions. Return your response as a JSON array with objects containing: originalSentence, suggestedSentence, and description.',
+          },
+          {
+            role: 'user',
+            content: document.content,
+          },
+        ],
+        temperature: 0.7,
+        max_tokens: 2000,
       });
 
-      for await (const element of elementStream) {
-        const suggestion = {
-          originalText: element.originalSentence,
-          suggestedText: element.suggestedSentence,
-          description: element.description,
-          id: generateUUID(),
-          documentId: documentId,
-          isResolved: false,
-        };
+      const content = response.choices[0]?.message?.content;
+      if (!content) {
+        return { error: 'No suggestions generated' };
+      }
 
-        dataStream.writeData({
-          type: 'suggestion',
-          content: suggestion,
-        });
+      try {
+        const suggestionsData = JSON.parse(content);
+        if (Array.isArray(suggestionsData)) {
+          for (const item of suggestionsData) {
+            const suggestion = {
+              originalText: item.originalSentence || '',
+              suggestedText: item.suggestedSentence || '',
+              description: item.description || '',
+              id: generateUUID(),
+              documentId: documentId,
+              isResolved: false,
+            };
 
-        suggestions.push(suggestion);
+            dataStream.writeData({
+              type: 'suggestion',
+              content: suggestion,
+            });
+
+            suggestions.push(suggestion);
+          }
+        }
+      } catch (error) {
+        console.error('Error parsing suggestions:', error);
+        return { error: 'Failed to parse suggestions' };
       }
 
       if (session.user?.id) {

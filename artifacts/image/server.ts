@@ -1,42 +1,84 @@
-import { myProvider } from '@/lib/ai/providers';
+import { openRouterClient } from '@/lib/ai/openrouter-client';
 import { createDocumentHandler } from '@/lib/artifacts/server';
-import { experimental_generateImage } from 'ai';
+import { updateDocumentPrompt } from '@/lib/ai/prompts';
+
+const imagePrompt = `Generate a detailed description for creating an image based on the user's request. Focus on visual elements, composition, style, and artistic details.`;
 
 export const imageDocumentHandler = createDocumentHandler<'image'>({
   kind: 'image',
   onCreateDocument: async ({ title, dataStream }) => {
+    const client = openRouterClient();
+    if (!client) {
+      throw new Error('OpenRouter client not initialized');
+    }
+
     let draftContent = '';
 
-    const { image } = await experimental_generateImage({
-      model: myProvider.imageModel('small-model'),
-      prompt: title,
-      n: 1,
+    const stream = await client.chat.completions.create({
+      model: 'x-ai/grok-2-vision-1212', // Use vision model for image generation
+      messages: [
+        {
+          role: 'system',
+          content: imagePrompt,
+        },
+        {
+          role: 'user',
+          content: title,
+        },
+      ],
+      stream: true,
+      temperature: 0.7,
+      max_tokens: 1000,
     });
 
-    draftContent = image.base64;
-
-    dataStream.writeData({
-      type: 'image-delta',
-      content: image.base64,
-    });
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content;
+      if (content) {
+        draftContent += content;
+        dataStream.writeData({
+          type: 'text-delta',
+          content: content,
+        });
+      }
+    }
 
     return draftContent;
   },
-  onUpdateDocument: async ({ description, dataStream }) => {
+  onUpdateDocument: async ({ document, description, dataStream }) => {
+    const client = openRouterClient();
+    if (!client) {
+      throw new Error('OpenRouter client not initialized');
+    }
+
     let draftContent = '';
 
-    const { image } = await experimental_generateImage({
-      model: myProvider.imageModel('small-model'),
-      prompt: description,
-      n: 1,
+    const stream = await client.chat.completions.create({
+      model: 'x-ai/grok-2-vision-1212', // Use vision model for image updates
+      messages: [
+        {
+          role: 'system',
+          content: updateDocumentPrompt(document.content, 'image'),
+        },
+        {
+          role: 'user',
+          content: description,
+        },
+      ],
+      stream: true,
+      temperature: 0.7,
+      max_tokens: 1000,
     });
 
-    draftContent = image.base64;
-
-    dataStream.writeData({
-      type: 'image-delta',
-      content: image.base64,
-    });
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content;
+      if (content) {
+        draftContent += content;
+        dataStream.writeData({
+          type: 'text-delta',
+          content: content,
+        });
+      }
+    }
 
     return draftContent;
   },

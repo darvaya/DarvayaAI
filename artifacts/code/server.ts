@@ -1,70 +1,80 @@
-import { z } from 'zod';
-import { streamObject } from 'ai';
-import { myProvider } from '@/lib/ai/providers';
-import { codePrompt, updateDocumentPrompt } from '@/lib/ai/prompts';
+import { openRouterClient } from '@/lib/ai/openrouter-client';
 import { createDocumentHandler } from '@/lib/artifacts/server';
+import { codePrompt, updateDocumentPrompt } from '@/lib/ai/prompts';
 
 export const codeDocumentHandler = createDocumentHandler<'code'>({
   kind: 'code',
   onCreateDocument: async ({ title, dataStream }) => {
+    const client = openRouterClient();
+    if (!client) {
+      throw new Error('OpenRouter client not initialized');
+    }
+
     let draftContent = '';
 
-    const { fullStream } = streamObject({
-      model: myProvider.languageModel('artifact-model'),
-      system: codePrompt,
-      prompt: title,
-      schema: z.object({
-        code: z.string(),
-      }),
+    const stream = await client.chat.completions.create({
+      model: 'x-ai/grok-2-1212', // artifact-model
+      messages: [
+        {
+          role: 'system',
+          content: codePrompt,
+        },
+        {
+          role: 'user',
+          content: title,
+        },
+      ],
+      stream: true,
+      temperature: 0.3,
+      max_tokens: 4000,
     });
 
-    for await (const delta of fullStream) {
-      const { type } = delta;
-
-      if (type === 'object') {
-        const { object } = delta;
-        const { code } = object;
-
-        if (code) {
-          dataStream.writeData({
-            type: 'code-delta',
-            content: code ?? '',
-          });
-
-          draftContent = code;
-        }
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content;
+      if (content) {
+        draftContent += content;
+        dataStream.writeData({
+          type: 'text-delta',
+          content: content,
+        });
       }
     }
 
     return draftContent;
   },
   onUpdateDocument: async ({ document, description, dataStream }) => {
+    const client = openRouterClient();
+    if (!client) {
+      throw new Error('OpenRouter client not initialized');
+    }
+
     let draftContent = '';
 
-    const { fullStream } = streamObject({
-      model: myProvider.languageModel('artifact-model'),
-      system: updateDocumentPrompt(document.content, 'code'),
-      prompt: description,
-      schema: z.object({
-        code: z.string(),
-      }),
+    const stream = await client.chat.completions.create({
+      model: 'x-ai/grok-2-1212', // artifact-model
+      messages: [
+        {
+          role: 'system',
+          content: updateDocumentPrompt(document.content, 'code'),
+        },
+        {
+          role: 'user',
+          content: description,
+        },
+      ],
+      stream: true,
+      temperature: 0.3,
+      max_tokens: 4000,
     });
 
-    for await (const delta of fullStream) {
-      const { type } = delta;
-
-      if (type === 'object') {
-        const { object } = delta;
-        const { code } = object;
-
-        if (code) {
-          dataStream.writeData({
-            type: 'code-delta',
-            content: code ?? '',
-          });
-
-          draftContent = code;
-        }
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content;
+      if (content) {
+        draftContent += content;
+        dataStream.writeData({
+          type: 'text-delta',
+          content: content,
+        });
       }
     }
 
