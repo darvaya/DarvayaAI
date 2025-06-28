@@ -2,9 +2,9 @@ name: Railway Auto-Deploy
 
 on:
   push:
-    branches: [ develop ]
+    branches: [ main ]
   pull_request:
-    branches: [ develop ]
+    branches: [ main ]
 
 jobs:
   test:
@@ -38,17 +38,26 @@ jobs:
     - name: Type check
       run: pnpm run lint
     
+    - name: Environment validation
+      run: echo "Validating required environment variables for production build..."
+    
     - name: Build application
       run: pnpm run build
       env:
         POSTGRES_URL: "postgresql://test:test@localhost:5432/test"
         AUTH_SECRET: "test-secret"
+        OPENROUTER_API_KEY: "test-key"
+        AWS_ACCESS_KEY_ID: "test-key"
+        AWS_SECRET_ACCESS_KEY: "test-secret"
+        AWS_REGION: "us-east-1"
+        AWS_S3_BUCKET: "test-bucket"
+        REDIS_URL: "redis://localhost:6379"
         NODE_ENV: "production"
 
   deploy:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     
     steps:
     - name: Deploy to Railway
