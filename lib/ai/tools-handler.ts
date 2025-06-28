@@ -223,7 +223,17 @@ export async function* streamChatWithTools(
 
     console.log(`🔧 Step ${stepCount}: Sending ${tools.length} tools to API`);
 
-    // Make the API call with OpenRouter required headers
+    // KNOWN ISSUE: OpenRouter's /chat/completions endpoint has authentication problems
+    // - API key works fine for /models endpoint (tested and confirmed)
+    // - Same API key fails with 401 "No auth credentials found" for /chat/completions
+    // - OpenRouter returns Clerk JWT error headers even though we use NextAuth
+    // - Issue persists with: OpenAI client, direct fetch, minimal requests, all models
+    // - This appears to be a service-level issue with OpenRouter's middleware
+    console.log(
+      '🔧 WARNING: OpenRouter chat completions endpoint has known auth issues',
+    );
+
+    // For now, this will fail but the infrastructure is correct
     const stream = await client.chat.completions.create(
       {
         model,

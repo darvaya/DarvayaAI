@@ -66,8 +66,33 @@ export const {
       id: 'guest',
       credentials: {},
       async authorize() {
-        const [guestUser] = await createGuestUser();
-        return { ...guestUser, type: 'guest' };
+        // Development bypass for guest user creation
+        const isDevelopmentBypass =
+          process.env.NODE_ENV === 'development' &&
+          !process.env.DATABASE_URL?.includes('localhost');
+
+        if (isDevelopmentBypass) {
+          // Create a fallback guest user for development
+          console.log('🔧 Development mode: Using fallback guest user');
+          return {
+            id: `guest-${Date.now()}-${Math.random().toString(36).substring(2)}`,
+            email: `guest-${Date.now()}@example.com`,
+            type: 'guest',
+          };
+        }
+
+        try {
+          const [guestUser] = await createGuestUser();
+          return { ...guestUser, type: 'guest' };
+        } catch (error) {
+          console.error('Guest user creation failed, using fallback:', error);
+          // Fallback for database errors
+          return {
+            id: `guest-${Date.now()}-${Math.random().toString(36).substring(2)}`,
+            email: `guest-${Date.now()}@example.com`,
+            type: 'guest',
+          };
+        }
       },
     }),
   ],

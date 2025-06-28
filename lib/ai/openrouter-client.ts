@@ -8,7 +8,7 @@ const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 export const MODEL_MAPPINGS = {
   'chat-model': 'google/gemini-2.0-flash-lite-001', // Changed from Grok to Gemini
   'chat-model-reasoning': 'openai/o1-mini', // Keep OpenAI for reasoning
-  'gemini-flash-lite': 'google/gemini-2.0-flash-lite-001', // Gemini Flash Lite
+  'gemini-flash-lite': 'google/gemini-2.0-flash-lite-001', // REVERTED: OpenRouter chat completions has auth issues
   'title-model': 'google/gemini-2.0-flash-lite-001', // Changed from Grok to Gemini
   'artifact-model': 'google/gemini-2.0-flash-lite-001', // Changed from Grok to Gemini
   'image-model': 'google/gemini-2.0-flash-lite-001', // Changed from Grok to Gemini
@@ -43,8 +43,25 @@ export function createOpenRouterClient() {
 // Lazy initialization to avoid requiring API key at build time
 let _openRouterClient: OpenAI | null = null;
 
+// Reset client (useful when environment changes)
+export function resetOpenRouterClient() {
+  console.log('🔧 Resetting OpenRouter client...');
+  _openRouterClient = null;
+}
+
 export const openRouterClient = (): OpenAI => {
   if (!_openRouterClient) {
+    console.log('🔧 Creating new OpenRouter client...');
+    console.log(
+      '🔧 API Key present:',
+      process.env.OPENROUTER_API_KEY ? 'Yes' : 'No',
+    );
+    if (process.env.OPENROUTER_API_KEY) {
+      console.log(
+        '🔧 API Key starts with:',
+        `${process.env.OPENROUTER_API_KEY.substring(0, 10)}...`,
+      );
+    }
     _openRouterClient = createOpenRouterClient();
   }
   return _openRouterClient as OpenAI;

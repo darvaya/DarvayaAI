@@ -81,8 +81,35 @@ export async function POST(request: Request) {
 
   try {
     const json = await request.json();
+    console.log('📥 Raw incoming request:', JSON.stringify(json, null, 2));
+
+    // Detailed validation of message parts before schema parsing
+    if (json.message?.parts) {
+      console.log(
+        '🔍 Validating message parts before schema:',
+        json.message.parts,
+      );
+      json.message.parts.forEach((part: any, index: number) => {
+        console.log(`🔍 Part ${index}:`, part);
+        if (part.type === 'text') {
+          console.log(
+            `🔍 Text part ${index} - type: ${typeof part.text}, value:`,
+            part.text,
+          );
+          if (typeof part.text !== 'string') {
+            console.error(`❌ Non-string text part at index ${index}:`, part);
+            // Auto-fix: convert to string
+            part.text = String(part.text || '');
+            console.log(`✅ Auto-fixed part ${index} to string:`, part.text);
+          }
+        }
+      });
+    }
+
     requestBody = postRequestBodySchema.parse(json);
+    console.log('✅ Schema validation passed');
   } catch (error) {
+    console.error('❌ Request parsing/validation failed:', error);
     Sentry.captureException(error, {
       tags: { error_type: 'request_parsing' },
     });

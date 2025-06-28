@@ -85,22 +85,51 @@ export function Chat({
     generateId: generateUUID,
     fetch: fetchWithErrorHandlers,
     experimental_prepareRequestBody: (body) => {
+      console.log(
+        '🔍 Full request body from AI SDK:',
+        JSON.stringify(body, null, 2),
+      );
       const lastMessage = body.messages.at(-1);
+      console.log(
+        '🔍 Last message from AI SDK:',
+        JSON.stringify(lastMessage, null, 2),
+      );
+
+      // Ensure content is always a string
+      let messageContent = '';
+      if (typeof lastMessage?.content === 'string') {
+        messageContent = lastMessage.content;
+      } else if (
+        lastMessage?.content &&
+        typeof lastMessage.content === 'object'
+      ) {
+        // Handle cases where content might be an object or array
+        messageContent = JSON.stringify(lastMessage.content);
+      } else {
+        messageContent = String(lastMessage?.content || '');
+      }
+
+      console.log('🔍 Processed message content:', messageContent);
 
       // Transform AI SDK message format to our API schema format
       const transformedMessage = {
         id: lastMessage?.id || generateUUID(),
         createdAt: lastMessage?.createdAt || new Date(),
         role: lastMessage?.role || 'user',
-        content: lastMessage?.content || '',
+        content: messageContent,
         parts: [
           {
             type: 'text' as const,
-            text: String(lastMessage?.content || ''), // Ensure it's a string
+            text: messageContent, // Use the validated string content
           },
         ],
         experimental_attachments: lastMessage?.experimental_attachments || [],
       };
+
+      console.log(
+        '🔍 Final transformed message:',
+        JSON.stringify(transformedMessage, null, 2),
+      );
 
       return {
         id,
