@@ -82,6 +82,7 @@ export function convertToOpenAITool(
     },
   };
 
+  console.log(`🔧 Registering tool: ${name}`);
   toolRegistry.register(name, openAITool, executor);
 }
 
