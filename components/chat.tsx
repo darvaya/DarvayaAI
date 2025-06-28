@@ -65,7 +65,21 @@ export function Chat({
     data,
   } = useChat({
     id,
-    initialMessages,
+    initialMessages: initialMessages.map((msg) => {
+      // Debug and ensure message parts are properly formatted
+      console.log('🔍 Initial message:', msg.id, msg.parts);
+      if (msg.parts) {
+        const sanitizedParts = msg.parts.map((part: any) => {
+          if (part.type === 'text' && typeof part.text !== 'string') {
+            console.warn('⚠️ Non-string text part found:', part);
+            return { ...part, text: String(part.text || '') };
+          }
+          return part;
+        });
+        return { ...msg, parts: sanitizedParts };
+      }
+      return msg;
+    }),
     experimental_throttle: 100,
     sendExtraMessageFields: true,
     generateId: generateUUID,
