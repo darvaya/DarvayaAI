@@ -8,7 +8,7 @@ import {
   updateChatVisiblityById,
 } from '@/lib/db/queries';
 import type { VisibilityType } from '@/components/visibility-selector';
-import { openRouterClient } from '@/lib/ai/openrouter-client';
+import { openRouterClient, getModelName } from '@/lib/ai/openrouter-client';
 
 export async function saveChatModelAsCookie(model: string) {
   const cookieStore = await cookies();
@@ -26,7 +26,7 @@ export async function generateTitleFromUserMessage({
   }
 
   const response = await client.chat.completions.create({
-    model: 'x-ai/grok-2-1212', // title-model
+    model: getModelName('title-model'), // Use title-model mapping
     messages: [
       {
         role: 'system',

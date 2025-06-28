@@ -1,4 +1,4 @@
-import { openRouterClient } from '@/lib/ai/openrouter-client';
+import { openRouterClient, getModelName } from '@/lib/ai/openrouter-client';
 import { createDocumentHandler } from '@/lib/artifacts/server';
 import { updateDocumentPrompt } from '@/lib/ai/prompts';
 
@@ -15,7 +15,7 @@ export const imageDocumentHandler = createDocumentHandler<'image'>({
     let draftContent = '';
 
     const stream = await client.chat.completions.create({
-      model: 'x-ai/grok-2-vision-1212', // Use vision model for image generation
+      model: getModelName('image-model'), // Use image-model mapping
       messages: [
         {
           role: 'system',
@@ -53,7 +53,7 @@ export const imageDocumentHandler = createDocumentHandler<'image'>({
     let draftContent = '';
 
     const stream = await client.chat.completions.create({
-      model: 'x-ai/grok-2-vision-1212', // Use vision model for image updates
+      model: getModelName('image-model'), // Use image-model mapping
       messages: [
         {
           role: 'system',

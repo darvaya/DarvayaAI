@@ -4,7 +4,7 @@ import { type DataStreamWriter, tool } from 'ai';
 import { getDocumentById, saveSuggestions } from '@/lib/db/queries';
 import type { Suggestion } from '@/lib/db/schema';
 import { generateUUID } from '@/lib/utils';
-import { openRouterClient } from '../openrouter-client';
+import { openRouterClient, getModelName } from '@/lib/ai/openrouter-client';
 
 interface RequestSuggestionsProps {
   session: Session;
@@ -42,7 +42,7 @@ export const requestSuggestions = ({
 
       // Since we can't use streamObject with OpenRouter directly, let's make a regular call
       const response = await client.chat.completions.create({
-        model: 'x-ai/grok-2-1212', // artifact-model
+        model: getModelName('artifact-model'), // Use artifact-model mapping
         messages: [
           {
             role: 'system',

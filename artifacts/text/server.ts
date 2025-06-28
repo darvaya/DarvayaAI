@@ -1,4 +1,4 @@
-import { openRouterClient } from '@/lib/ai/openrouter-client';
+import { openRouterClient, getModelName } from '@/lib/ai/openrouter-client';
 import { createDocumentHandler } from '@/lib/artifacts/server';
 import { updateDocumentPrompt } from '@/lib/ai/prompts';
 
@@ -13,7 +13,7 @@ export const textDocumentHandler = createDocumentHandler<'text'>({
     let draftContent = '';
 
     const stream = await client.chat.completions.create({
-      model: 'x-ai/grok-2-1212', // artifact-model
+      model: getModelName('artifact-model'), // Use artifact-model mapping instead of hardcoded
       messages: [
         {
           role: 'system',
@@ -52,7 +52,7 @@ export const textDocumentHandler = createDocumentHandler<'text'>({
     let draftContent = '';
 
     const stream = await client.chat.completions.create({
-      model: 'x-ai/grok-2-1212', // artifact-model
+      model: getModelName('artifact-model'), // Use artifact-model mapping instead of hardcoded
       messages: [
         {
           role: 'system',

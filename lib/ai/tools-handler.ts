@@ -95,6 +95,7 @@ export async function executeToolCall(
   const executor = toolRegistry.getExecutor(name);
 
   if (!executor) {
+    console.error(`❌ Tool '${name}' not found in registry`);
     return {
       success: false,
       error: `Tool '${name}' not found`,
@@ -102,13 +103,24 @@ export async function executeToolCall(
   }
 
   try {
+    console.log(`🔧 Executing tool: ${name}`);
     const args = JSON.parse(toolCall.function.arguments);
     const result = await executor(args, context);
+
+    if (result.success) {
+      console.log(`✅ Tool '${name}' executed successfully`);
+    } else {
+      console.log(`❌ Tool '${name}' failed: ${result.error}`);
+    }
+
     return result;
   } catch (error) {
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error';
+    console.error(`❌ Tool '${name}' execution error: ${errorMessage}`);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: errorMessage,
     };
   }
 }

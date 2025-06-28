@@ -4,14 +4,14 @@ import { isTestEnvironment } from '../constants';
 // OpenRouter configuration
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 
-// Model mappings from current XAI models to OpenRouter equivalents
+// Model mappings - Using only Gemini models (no Grok)
 export const MODEL_MAPPINGS = {
-  'chat-model': 'x-ai/grok-2-vision-1212',
-  'chat-model-reasoning': 'openai/o1-mini', // Using OpenAI's reasoning model
-  'gemini-flash-lite': 'google/gemini-2.0-flash-lite-001',
-  'title-model': 'x-ai/grok-2-1212',
-  'artifact-model': 'x-ai/grok-2-1212',
-  'image-model': 'x-ai/grok-2-vision-1212', // For now, will implement image generation separately
+  'chat-model': 'google/gemini-2.0-flash-lite-001', // Changed from Grok to Gemini
+  'chat-model-reasoning': 'openai/o1-mini', // Keep OpenAI for reasoning
+  'gemini-flash-lite': 'google/gemini-2.0-flash-lite-001', // Gemini Flash Lite
+  'title-model': 'google/gemini-2.0-flash-lite-001', // Changed from Grok to Gemini
+  'artifact-model': 'google/gemini-2.0-flash-lite-001', // Changed from Grok to Gemini
+  'image-model': 'google/gemini-2.0-flash-lite-001', // Changed from Grok to Gemini
 } as const;
 
 export type ModelKey = keyof typeof MODEL_MAPPINGS;

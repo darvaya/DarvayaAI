@@ -35,14 +35,34 @@ export class CustomDataStreamWriter {
   writeData(data: any) {
     if (!this.controller) return;
 
-    const chunk = this.encoder.encode(`0:${JSON.stringify(data)}\n`);
+    // Ensure data is properly serialized for Redis compatibility
+    let serializedData: string;
+    if (typeof data === 'string') {
+      serializedData = data;
+    } else if (data && typeof data === 'object') {
+      // If data has a 'data' field that's already serialized, use it
+      if (data.data && typeof data.data === 'string') {
+        serializedData = JSON.stringify({
+          type: data.type,
+          content: JSON.parse(data.data),
+        });
+      } else {
+        serializedData = JSON.stringify(data);
+      }
+    } else {
+      serializedData = JSON.stringify(data);
+    }
+
+    const chunk = this.encoder.encode(`0:${serializedData}\n`);
     this.controller.enqueue(chunk);
   }
 
   writeMessageAnnotation(annotation: any) {
     if (!this.controller) return;
 
-    const chunk = this.encoder.encode(`8:${JSON.stringify(annotation)}\n`);
+    const serializedAnnotation =
+      typeof annotation === 'string' ? annotation : JSON.stringify(annotation);
+    const chunk = this.encoder.encode(`8:${serializedAnnotation}\n`);
     this.controller.enqueue(chunk);
   }
 

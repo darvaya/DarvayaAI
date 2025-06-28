@@ -261,17 +261,25 @@ export async function POST(request: Request) {
           const modelName = getModelName(routedModel);
 
           // Log routing decision for monitoring
-          console.log(
-            `🚀 Model routing: ${selectedChatModel} → ${routedModel} for user ${session.user.id}`,
-          );
+          if (selectedChatModel === routedModel) {
+            console.log(
+              `🚀 Model selection: Using ${routedModel} (direct selection) for user ${session.user.id}`,
+            );
+          } else {
+            console.log(
+              `🚀 Model routing: ${selectedChatModel} → ${routedModel} (smart routing) for user ${session.user.id}`,
+            );
+          }
 
-          // Send routing info to data stream for monitoring
+          // Send routing info to data stream for monitoring (serialize properly for Redis)
           writer.writeData({
             type: 'model-routing',
-            originalModel: selectedChatModel,
-            routedModel,
-            userId: session.user.id,
-            timestamp: new Date().toISOString(),
+            data: JSON.stringify({
+              originalModel: selectedChatModel,
+              routedModel,
+              userId: session.user.id,
+              timestamp: new Date().toISOString(),
+            }),
           });
 
           const streamGenerator = streamChatWithTools(
@@ -303,14 +311,16 @@ export async function POST(request: Request) {
                 fullContent += chunk.data;
                 writer.writeText(chunk.data);
               } else if (chunk.type === 'tool_call') {
+                // Serialize tool call data properly for Redis compatibility
                 writer.writeData({
                   type: 'tool-call',
-                  toolCall: chunk.data,
+                  data: JSON.stringify(chunk.data),
                 });
               } else if (chunk.type === 'tool_result') {
+                // Serialize tool result data properly for Redis compatibility
                 writer.writeData({
                   type: 'tool-result',
-                  result: chunk.data,
+                  data: JSON.stringify(chunk.data),
                 });
               } else if (chunk.type === 'finish') {
                 streamCompleted = true;
@@ -424,7 +434,9 @@ export async function POST(request: Request) {
             console.error('Streaming error:', error);
             writer.writeData({
               type: 'error',
-              error: 'An error occurred while processing your request.',
+              data: JSON.stringify({
+                error: 'An error occurred while processing your request.',
+              }),
             });
 
             // Record failed performance metric
@@ -453,18 +465,16 @@ export async function POST(request: Request) {
       },
     });
 
-    // Skip resumable streams in development when Redis is not available
-    const streamContext = isDevelopmentBypass ? null : getStreamContext();
-
-    if (streamContext) {
-      return new Response(
-        await streamContext.resumableStream(streamId, () => stream),
-      );
-    } else {
-      // Use direct streaming in development mode or when Redis unavailable
-      console.log('🔧 Development mode: Using direct streaming (no Redis)');
-      return new Response(stream);
-    }
+    // Disable resumable streams to avoid Redis serialization issues
+    // Use direct streaming instead for now
+    console.log('🔧 Using direct streaming (Redis resumable streams disabled)');
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      },
+    });
   } catch (error) {
     // Only capture unexpected errors (ChatSDKError already handles itself)
     if (!(error instanceof ChatSDKError)) {

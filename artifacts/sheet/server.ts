@@ -1,4 +1,4 @@
-import { openRouterClient } from '@/lib/ai/openrouter-client';
+import { openRouterClient, getModelName } from '@/lib/ai/openrouter-client';
 import { createDocumentHandler } from '@/lib/artifacts/server';
 import { sheetPrompt, updateDocumentPrompt } from '@/lib/ai/prompts';
 
@@ -51,7 +51,7 @@ export const sheetDocumentHandler = createDocumentHandler<'sheet'>({
     let draftContent = '';
 
     const stream = await client.chat.completions.create({
-      model: 'x-ai/grok-2-1212', // artifact-model
+      model: getModelName('artifact-model'), // Use artifact-model mapping
       messages: [
         {
           role: 'system',
