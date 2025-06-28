@@ -174,12 +174,5 @@ export function getDatabaseUrl(): string {
   return dbUrl;
 }
 
-// Validate at startup in non-test environments
-if (process.env.NODE_ENV !== 'test' && typeof window === 'undefined') {
-  try {
-    validateEnvironment();
-  } catch (error) {
-    console.error('🚨 Startup failed due to environment validation errors');
-    process.exit(1);
-  }
-}
+// Note: Environment validation is called explicitly where needed
+// rather than at startup to prevent crashes
