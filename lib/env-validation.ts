@@ -27,17 +27,11 @@ const envSchema = z
       .optional(),
     OPENROUTER_APP_NAME: z.string().optional(),
 
-    // AWS S3 Storage Configuration
-    AWS_ACCESS_KEY_ID: z
-      .string()
-      .min(1, 'AWS_ACCESS_KEY_ID is required for file storage'),
-    AWS_SECRET_ACCESS_KEY: z
-      .string()
-      .min(1, 'AWS_SECRET_ACCESS_KEY is required for file storage'),
-    AWS_REGION: z.string().min(1, 'AWS_REGION is required for file storage'),
-    AWS_S3_BUCKET: z
-      .string()
-      .min(1, 'AWS_S3_BUCKET is required for file storage'),
+    // AWS S3 Storage Configuration (optional - file uploads disabled if not configured)
+    AWS_ACCESS_KEY_ID: z.string().optional(),
+    AWS_SECRET_ACCESS_KEY: z.string().optional(),
+    AWS_REGION: z.string().optional(),
+    AWS_S3_BUCKET: z.string().optional(),
 
     // Redis Configuration
     REDIS_URL: z.string().url('REDIS_URL must be a valid URL'),
@@ -76,6 +70,18 @@ const envSchema = z
 
 export type Environment = z.infer<typeof envSchema>;
 
+// Helper function to check if AWS S3 is properly configured
+export function isS3Configured(env: Environment): boolean {
+  return !!(
+    env.AWS_ACCESS_KEY_ID &&
+    env.AWS_SECRET_ACCESS_KEY &&
+    env.AWS_REGION &&
+    env.AWS_S3_BUCKET &&
+    env.AWS_ACCESS_KEY_ID !== 'your-aws-access-key-id' &&
+    env.AWS_SECRET_ACCESS_KEY !== 'your-aws-secret-access-key'
+  );
+}
+
 export function validateEnvironment(): Environment {
   console.log('🔍 Validating environment variables...');
 
@@ -95,13 +101,21 @@ export function validateEnvironment(): Environment {
     console.log(
       `  - OPENROUTER_API_KEY: ${env.OPENROUTER_API_KEY ? '✅ Set' : '❌ Missing'}`,
     );
+
+    const s3Configured = isS3Configured(env);
     console.log(
-      `  - AWS Configuration: ${env.AWS_ACCESS_KEY_ID && env.AWS_SECRET_ACCESS_KEY && env.AWS_REGION && env.AWS_S3_BUCKET ? '✅ Complete' : '❌ Incomplete'}`,
+      `  - AWS Configuration: ${s3Configured ? '✅ Complete' : '⚠️ Incomplete (file uploads disabled)'}`,
     );
     console.log(`  - REDIS_URL: ${env.REDIS_URL ? '✅ Set' : '❌ Missing'}`);
     console.log(
       `  - Sentry Monitoring: ${env.NEXT_PUBLIC_SENTRY_DSN ? '✅ Enabled' : '⚠️ Disabled'}`,
     );
+
+    if (!s3Configured) {
+      console.log(
+        '📝 Note: File upload functionality is disabled until AWS S3 credentials are properly configured',
+      );
+    }
 
     return env;
   } catch (error) {
@@ -125,13 +139,13 @@ export function validateEnvironment(): Environment {
       console.error('     - POSTGRES_URL or DATABASE_URL (one required)');
       console.error('   AI Services:');
       console.error('     - OPENROUTER_API_KEY (required)');
-      console.error('   File Storage:');
-      console.error('     - AWS_ACCESS_KEY_ID (required)');
-      console.error('     - AWS_SECRET_ACCESS_KEY (required)');
-      console.error('     - AWS_REGION (required)');
-      console.error('     - AWS_S3_BUCKET (required)');
       console.error('   Caching:');
       console.error('     - REDIS_URL (required)');
+      console.error('   File Storage (optional):');
+      console.error('     - AWS_ACCESS_KEY_ID');
+      console.error('     - AWS_SECRET_ACCESS_KEY');
+      console.error('     - AWS_REGION');
+      console.error('     - AWS_S3_BUCKET');
       console.error('   Monitoring (optional):');
       console.error('     - NEXT_PUBLIC_SENTRY_DSN');
       console.error('     - SENTRY_ORG');
