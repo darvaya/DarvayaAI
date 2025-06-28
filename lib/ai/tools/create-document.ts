@@ -59,7 +59,7 @@ export const createDocument = ({ session, dataStream }: CreateDocumentProps) =>
         session,
       });
 
-      dataStream.writeData({ type: 'finish', content: '' });
+      // Don't send finish event here - let the main stream handler control completion
 
       return {
         id,

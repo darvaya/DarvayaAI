@@ -282,18 +282,18 @@ export async function* streamChatWithTools(
       };
     }
 
-    // If we reached max steps, finish
-    if (stepCount >= maxSteps) {
-      yield {
-        type: 'finish',
-        data: {
-          content: assistantMessage,
-          usage: null,
-        },
-      };
-      break;
-    }
+    // Continue with the next iteration to get the model's response to the tool results
+    // Don't break here - let the model respond to the tool execution
   }
+
+  // If we exit the loop without finishing naturally, ensure we send a finish event
+  yield {
+    type: 'finish',
+    data: {
+      content: '',
+      usage: null,
+    },
+  };
 }
 
 // Helper to create a basic OpenAI function schema

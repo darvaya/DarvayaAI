@@ -1,5 +1,5 @@
 import { convertToOpenAITool } from '../tools-handler';
-import type { ToolExecutor, } from '../tools-handler';
+import type { ToolExecutor } from '../tools-handler';
 import { generateUUID } from '@/lib/utils';
 import {
   artifactKinds,
@@ -99,8 +99,7 @@ const createDocumentExecutor: ToolExecutor = async (args, context) => {
       session,
     });
 
-    // Signal completion
-    dataStream.writeData({ type: 'finish', content: '' });
+    // Don't send finish event here - let the main stream handler control completion
 
     return {
       success: true,

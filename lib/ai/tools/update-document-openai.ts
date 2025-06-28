@@ -1,5 +1,5 @@
 import { convertToOpenAITool } from '../tools-handler';
-import type { ToolExecutor, } from '../tools-handler';
+import type { ToolExecutor } from '../tools-handler';
 import { getDocumentById } from '@/lib/db/queries';
 import { documentHandlersByArtifactKind } from '@/lib/artifacts/server';
 
@@ -89,8 +89,7 @@ const updateDocumentExecutor: ToolExecutor = async (args, context) => {
       session,
     });
 
-    // Signal completion
-    dataStream.writeData({ type: 'finish', content: '' });
+    // Don't send finish event here - let the main stream handler control completion
 
     return {
       success: true,
