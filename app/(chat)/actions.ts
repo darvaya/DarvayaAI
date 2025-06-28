@@ -1,6 +1,6 @@
 'use server';
 
-import { generateText, type UIMessage } from 'ai';
+import type { UIMessage } from 'ai';
 import { cookies } from 'next/headers';
 import {
   deleteMessagesByChatIdAfterTimestamp,
