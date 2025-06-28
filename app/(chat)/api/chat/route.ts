@@ -323,162 +323,108 @@ export async function POST(request: Request) {
 
         // Start streaming with OpenRouter
         (async () => {
+          // Apply Phase 3 model routing logic
+          const userContext = {
+            userId: session.user.id,
+            isGuest: session.user.type === 'guest',
+            sessionId: `session_${session.user.id}_${Date.now()}`,
+          };
+
+          // Route model selection (Phase 3: 5% traffic to Gemini Flash Lite)
+          const routedModel = selectModelWithRouting(
+            selectedChatModel as
+              | 'chat-model'
+              | 'chat-model-reasoning'
+              | 'gemini-flash-lite',
+            userContext,
+          );
+
+          const modelConfig = getModelConfig(routedModel);
+          const systemMessage = systemPrompt({
+            selectedChatModel: routedModel,
+            requestHints,
+          });
+
+          // Add system message to the beginning
+          const messagesWithSystem = [
+            { role: 'system' as const, content: systemMessage },
+            ...openAiMessages,
+          ];
+
+          // Get the actual model name from mappings
+          const { getModelName } = await import('@/lib/ai/openrouter-client');
+          const modelName = getModelName(routedModel);
+
+          // Log routing decision for monitoring
+          console.log(
+            `🚀 Model routing: ${selectedChatModel} → ${routedModel} for user ${session.user.id}`,
+          );
+
+          // Send routing info to data stream for monitoring
+          writer.writeData({
+            type: 'model-routing',
+            originalModel: selectedChatModel,
+            routedModel,
+            userId: session.user.id,
+            timestamp: new Date().toISOString(),
+          });
+
+          const streamGenerator = streamChatWithTools(
+            messagesWithSystem,
+            modelName,
+            { session, dataStream: writer },
+            {
+              temperature: modelConfig.temperature,
+              max_tokens: modelConfig.max_tokens,
+              top_p: modelConfig.top_p,
+              tools: availableTools,
+              maxSteps: 5,
+            },
+          );
+
+          let fullContent = '';
+          const startTime = Date.now();
+          let tokenUsage = {
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0,
+          };
+
+          let streamCompleted = false;
+
           try {
-            // Apply Phase 3 model routing logic
-            const userContext = {
-              userId: session.user.id,
-              isGuest: session.user.type === 'guest',
-              sessionId: `session_${session.user.id}_${Date.now()}`,
-            };
+            for await (const chunk of streamGenerator) {
+              if (chunk.type === 'content') {
+                fullContent += chunk.data;
+                writer.writeText(chunk.data);
+              } else if (chunk.type === 'tool_call') {
+                writer.writeData({
+                  type: 'tool-call',
+                  toolCall: chunk.data,
+                });
+              } else if (chunk.type === 'tool_result') {
+                writer.writeData({
+                  type: 'tool-result',
+                  result: chunk.data,
+                });
+              } else if (chunk.type === 'finish') {
+                streamCompleted = true;
 
-            // Route model selection (Phase 3: 5% traffic to Gemini Flash Lite)
-            const routedModel = selectModelWithRouting(
-              selectedChatModel as
-                | 'chat-model'
-                | 'chat-model-reasoning'
-                | 'gemini-flash-lite',
-              userContext,
-            );
-
-            const modelConfig = getModelConfig(routedModel);
-            const systemMessage = systemPrompt({
-              selectedChatModel: routedModel,
-              requestHints,
-            });
-
-            // Add system message to the beginning
-            const messagesWithSystem = [
-              { role: 'system' as const, content: systemMessage },
-              ...openAiMessages,
-            ];
-
-            // Get the actual model name from mappings
-            const { getModelName } = await import('@/lib/ai/openrouter-client');
-            const modelName = getModelName(routedModel);
-
-            // Log routing decision for monitoring
-            console.log(
-              `🚀 Model routing: ${selectedChatModel} → ${routedModel} for user ${session.user.id}`,
-            );
-
-            // Send routing info to data stream for monitoring
-            writer.writeData({
-              type: 'model-routing',
-              originalModel: selectedChatModel,
-              routedModel,
-              userId: session.user.id,
-              timestamp: new Date().toISOString(),
-            });
-
-            const streamGenerator = streamChatWithTools(
-              messagesWithSystem,
-              modelName,
-              { session, dataStream: writer },
-              {
-                temperature: modelConfig.temperature,
-                max_tokens: modelConfig.max_tokens,
-                top_p: modelConfig.top_p,
-                tools: availableTools,
-                maxSteps: 5,
-              },
-            );
-
-            let fullContent = '';
-            const startTime = Date.now();
-            let tokenUsage = {
-              prompt_tokens: 0,
-              completion_tokens: 0,
-              total_tokens: 0,
-            };
-
-            let streamCompleted = false;
-
-            try {
-              for await (const chunk of streamGenerator) {
-                if (chunk.type === 'content') {
-                  fullContent += chunk.data;
-                  writer.writeText(chunk.data);
-                } else if (chunk.type === 'tool_call') {
-                  writer.writeData({
-                    type: 'tool-call',
-                    toolCall: chunk.data,
-                  });
-                } else if (chunk.type === 'tool_result') {
-                  writer.writeData({
-                    type: 'tool-result',
-                    result: chunk.data,
-                  });
-                } else if (chunk.type === 'finish') {
-                  streamCompleted = true;
-
-                  // Record performance metrics for Phase 3 monitoring
-                  const endTime = Date.now();
-                  const latency = endTime - startTime;
-
-                  // Extract token usage from chunk if available
-                  if (chunk.data?.usage) {
-                    tokenUsage = chunk.data.usage;
-                  }
-
-                  const cost = calculateCost(routedModel, {
-                    promptTokens: tokenUsage.prompt_tokens || 0,
-                    completionTokens: tokenUsage.completion_tokens || 0,
-                  });
-
-                  // Record the performance metric
-                  recordPerformanceMetric({
-                    model: routedModel,
-                    userId: session.user.id,
-                    sessionId: userContext.sessionId,
-                    timestamp: new Date().toISOString(),
-                    latency,
-                    tokenUsage: {
-                      promptTokens: tokenUsage.prompt_tokens || 0,
-                      completionTokens: tokenUsage.completion_tokens || 0,
-                      totalTokens: tokenUsage.total_tokens || 0,
-                    },
-                    cost,
-                    success: true,
-                  });
-
-                  // Save the assistant message
-                  if (session.user?.id && fullContent) {
-                    try {
-                      const assistantId = generateUUID();
-
-                      await saveMessages({
-                        messages: [
-                          {
-                            id: assistantId,
-                            chatId: id,
-                            role: 'assistant',
-                            parts: [{ type: 'text', text: fullContent }],
-                            attachments: [],
-                            createdAt: new Date(),
-                          },
-                        ],
-                      });
-                    } catch (error) {
-                      console.error('Failed to save chat:', error);
-                    }
-                  }
-                  break;
-                }
-              }
-
-              // If the stream didn't complete naturally, ensure we still finish properly
-              if (!streamCompleted && fullContent) {
-                console.log(
-                  '🔧 Stream did not complete naturally, finishing manually',
-                );
-
+                // Record performance metrics for Phase 3 monitoring
                 const endTime = Date.now();
                 const latency = endTime - startTime;
+
+                // Extract token usage from chunk if available
+                if (chunk.data?.usage) {
+                  tokenUsage = chunk.data.usage;
+                }
+
                 const cost = calculateCost(routedModel, {
                   promptTokens: tokenUsage.prompt_tokens || 0,
                   completionTokens: tokenUsage.completion_tokens || 0,
                 });
 
+                // Record the performance metric
                 recordPerformanceMetric({
                   model: routedModel,
                   userId: session.user.id,
@@ -515,17 +461,22 @@ export async function POST(request: Request) {
                     console.error('Failed to save chat:', error);
                   }
                 }
+                break;
               }
-            } catch (error) {
-              console.error('Streaming error:', error);
-              writer.writeData({
-                type: 'error',
-                error: 'An error occurred while processing your request.',
-              });
+            }
 
-              // Record failed performance metric
+            // If the stream didn't complete naturally, ensure we still finish properly
+            if (!streamCompleted && fullContent) {
+              console.log(
+                '🔧 Stream did not complete naturally, finishing manually',
+              );
+
               const endTime = Date.now();
               const latency = endTime - startTime;
+              const cost = calculateCost(routedModel, {
+                promptTokens: tokenUsage.prompt_tokens || 0,
+                completionTokens: tokenUsage.completion_tokens || 0,
+              });
 
               recordPerformanceMetric({
                 model: routedModel,
@@ -534,17 +485,65 @@ export async function POST(request: Request) {
                 timestamp: new Date().toISOString(),
                 latency,
                 tokenUsage: {
-                  promptTokens: 0,
-                  completionTokens: 0,
-                  totalTokens: 0,
+                  promptTokens: tokenUsage.prompt_tokens || 0,
+                  completionTokens: tokenUsage.completion_tokens || 0,
+                  totalTokens: tokenUsage.total_tokens || 0,
                 },
-                cost: 0,
-                success: false,
+                cost,
+                success: true,
               });
-            } finally {
-              console.log('🔧 Closing stream writer');
-              writer.close();
+
+              // Save the assistant message
+              if (session.user?.id && fullContent) {
+                try {
+                  const assistantId = generateUUID();
+
+                  await saveMessages({
+                    messages: [
+                      {
+                        id: assistantId,
+                        chatId: id,
+                        role: 'assistant',
+                        parts: [{ type: 'text', text: fullContent }],
+                        attachments: [],
+                        createdAt: new Date(),
+                      },
+                    ],
+                  });
+                } catch (error) {
+                  console.error('Failed to save chat:', error);
+                }
+              }
             }
+          } catch (error) {
+            console.error('Streaming error:', error);
+            writer.writeData({
+              type: 'error',
+              error: 'An error occurred while processing your request.',
+            });
+
+            // Record failed performance metric
+            const endTime = Date.now();
+            const latency = endTime - startTime;
+
+            recordPerformanceMetric({
+              model: routedModel,
+              userId: session.user.id,
+              sessionId: userContext.sessionId,
+              timestamp: new Date().toISOString(),
+              latency,
+              tokenUsage: {
+                promptTokens: 0,
+                completionTokens: 0,
+                totalTokens: 0,
+              },
+              cost: 0,
+              success: false,
+            });
+          } finally {
+            console.log('🔧 Closing stream writer');
+            writer.close();
+          }
         })();
       },
     });
