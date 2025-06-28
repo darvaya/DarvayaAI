@@ -178,12 +178,64 @@ export function Chat({
 
   useEffect(() => {
     if (data?.length) {
+      const latestChunk = data[data.length - 1];
       console.log(
         '📊 New streaming data:',
         data.length,
         'chunks, latest:',
-        data[data.length - 1],
+        latestChunk,
       );
+
+      // CRITICAL FIX: Validate streaming chunks for malformed message parts
+      if (latestChunk && typeof latestChunk === 'object') {
+        const chunk = latestChunk as any; // Cast to any to access dynamic properties
+        console.log(
+          '🔍 Validating streaming chunk:',
+          JSON.stringify(chunk, null, 2),
+        );
+
+        // Check for message parts in the chunk
+        if (chunk.parts && Array.isArray(chunk.parts)) {
+          console.log(
+            '🔍 Found message parts in streaming chunk:',
+            chunk.parts,
+          );
+          chunk.parts.forEach((part: any, index: number) => {
+            if (part.type === 'text' && typeof part.text !== 'string') {
+              console.error(
+                `❌ CRITICAL: Non-string text part in streaming chunk at index ${index}:`,
+                part,
+              );
+              // This is read-only, so we can't fix it here, but we can identify the source
+              console.error(
+                '🚨 This is the source of the "text parts expect string value" error!',
+              );
+            }
+          });
+        }
+
+        // Check nested structures
+        if (chunk.data && typeof chunk.data === 'object') {
+          if (chunk.data.parts && Array.isArray(chunk.data.parts)) {
+            console.log(
+              '🔍 Found nested message parts in streaming chunk:',
+              chunk.data.parts,
+            );
+            chunk.data.parts.forEach((part: any, index: number) => {
+              if (part.type === 'text' && typeof part.text !== 'string') {
+                console.error(
+                  `❌ CRITICAL: Non-string text part in nested data at index ${index}:`,
+                  part,
+                );
+                console.error(
+                  '🚨 This is the source of the "text parts expect string value" error!',
+                );
+              }
+            });
+          }
+        }
+      }
+
       console.log('📈 Real-time streaming is working!');
     }
   }, [data]);
