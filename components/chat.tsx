@@ -1,31 +1,66 @@
 'use client';
 
-import type { Attachment, UIMessage } from 'ai';
-import { useChat } from '@ai-sdk/react';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import useSWR, { useSWRConfig } from 'swr';
 import { ChatHeader } from '@/components/chat-header';
 import type { Vote } from '@/lib/db/schema';
-import { fetcher, fetchWithErrorHandlers, generateUUID } from '@/lib/utils';
+import { fetcher, generateUUID } from '@/lib/utils';
 import { Artifact } from './artifact';
 import { MultimodalInput } from './multimodal-input';
 import { Messages } from './messages';
 import type { VisibilityType } from './visibility-selector';
-import {
-  useArtifactSelector,
-  useArtifact,
-  initialArtifactData,
-} from '@/hooks/use-artifact';
-import { artifactDefinitions } from './artifact';
+import { useArtifactSelector, useArtifact } from '@/hooks/use-artifact';
 import { unstable_serialize } from 'swr/infinite';
 import { getChatHistoryPaginationKey } from './sidebar-history';
 import { toast } from './toast';
 import type { Session } from 'next-auth';
 import { useSearchParams } from 'next/navigation';
 import { useChatVisibility } from '@/hooks/use-chat-visibility';
-import { useAutoResume } from '@/hooks/use-auto-resume';
 import { ChatSDKError } from '@/lib/errors';
 import { trackChatMessage } from '@/lib/analytics';
+
+// New OpenAI SDK imports
+import { useOpenAIChat } from '@/hooks/use-openai-chat';
+import type { OpenAIMessage, ChatStatus } from '@/lib/types/openai';
+import { convertMessagesToOpenAI } from '@/lib/utils/message-formatting';
+
+// Compatibility imports for existing components
+import type { UIMessage, Attachment as VercelAttachment } from 'ai';
+import type { UseChatHelpers } from '@ai-sdk/react';
+
+// Type conversion utilities
+function convertOpenAIToUIMessage(message: OpenAIMessage): UIMessage {
+  return {
+    id: message.id || generateUUID(),
+    role: message.role === 'tool' ? 'assistant' : message.role, // Map tool role to assistant
+    content: message.content,
+    createdAt: message.createdAt || new Date(),
+    // Convert content to parts format for compatibility
+    parts: [
+      {
+        type: 'text' as const,
+        text: message.content,
+      },
+    ],
+  };
+}
+
+function convertChatStatusToVercelStatus(
+  status: ChatStatus,
+): UseChatHelpers['status'] {
+  switch (status) {
+    case 'idle':
+      return 'ready';
+    case 'streaming':
+      return 'streaming';
+    case 'error':
+      return 'error';
+    case 'loading':
+      return 'submitted';
+    default:
+      return 'ready';
+  }
+}
 
 export function Chat({
   id,
@@ -37,7 +72,7 @@ export function Chat({
   autoResume,
 }: {
   id: string;
-  initialMessages: Array<UIMessage>;
+  initialMessages: Array<any>; // Accept both UIMessage and OpenAIMessage formats
   initialChatModel: string;
   initialVisibilityType: VisibilityType;
   isReadonly: boolean;
@@ -51,94 +86,27 @@ export function Chat({
     initialVisibilityType,
   });
 
+  // Convert initial messages to OpenAI format
+  const openAIInitialMessages = convertMessagesToOpenAI(initialMessages);
+
   const {
-    messages,
-    setMessages,
-    handleSubmit,
+    messages: openAIMessages,
+    setMessages: setOpenAIMessages,
+    handleSubmit: openAIHandleSubmit,
     input,
-    setInput,
-    append,
-    status,
+    setInput: openAISetInput,
+    append: openAIAppend,
+    status: openAIStatus,
     stop,
-    reload,
-    experimental_resume,
-    data,
-  } = useChat({
+    reload: openAIReload,
+    sendMessage,
+    error,
+  } = useOpenAIChat({
     id,
-    initialMessages: initialMessages.map((msg) => {
-      // Debug and ensure message parts are properly formatted
-      console.log('🔍 Initial message:', msg.id, msg.parts);
-      if (msg.parts) {
-        const sanitizedParts = msg.parts.map((part: any) => {
-          if (part.type === 'text' && typeof part.text !== 'string') {
-            console.warn('⚠️ Non-string text part found:', part);
-            return { ...part, text: String(part.text || '') };
-          }
-          return part;
-        });
-        return { ...msg, parts: sanitizedParts };
-      }
-      return msg;
-    }),
-    experimental_throttle: 100,
-    sendExtraMessageFields: true,
-    generateId: generateUUID,
-    fetch: fetchWithErrorHandlers,
-    experimental_prepareRequestBody: (body) => {
-      console.log(
-        '🔍 Full request body from AI SDK:',
-        JSON.stringify(body, null, 2),
-      );
-      const lastMessage = body.messages.at(-1);
-      console.log(
-        '🔍 Last message from AI SDK:',
-        JSON.stringify(lastMessage, null, 2),
-      );
-
-      // Ensure content is always a string
-      let messageContent = '';
-      if (typeof lastMessage?.content === 'string') {
-        messageContent = lastMessage.content;
-      } else if (
-        lastMessage?.content &&
-        typeof lastMessage.content === 'object'
-      ) {
-        // Handle cases where content might be an object or array
-        messageContent = JSON.stringify(lastMessage.content);
-      } else {
-        messageContent = String(lastMessage?.content || '');
-      }
-
-      console.log('🔍 Processed message content:', messageContent);
-
-      // Transform AI SDK message format to our API schema format
-      const transformedMessage = {
-        id: lastMessage?.id || generateUUID(),
-        createdAt: lastMessage?.createdAt || new Date(),
-        role: lastMessage?.role || 'user',
-        content: messageContent,
-        parts: [
-          {
-            type: 'text' as const,
-            text: messageContent, // Use the validated string content
-          },
-        ],
-        experimental_attachments: lastMessage?.experimental_attachments || [],
-      };
-
-      console.log(
-        '🔍 Final transformed message:',
-        JSON.stringify(transformedMessage, null, 2),
-      );
-
-      return {
-        id,
-        message: transformedMessage,
-        selectedChatModel: initialChatModel,
-        selectedVisibilityType: visibilityType,
-      };
-    },
-    onFinish: () => {
+    initialMessages: openAIInitialMessages,
+    selectedChatModel: initialChatModel,
+    selectedVisibilityType: visibilityType,
+    onFinish: (message) => {
       console.log('🎉 Chat stream finished successfully');
       // Track assistant response
       trackChatMessage({
@@ -161,95 +129,92 @@ export function Chat({
     },
   });
 
+  // Create compatibility wrappers for existing components
+  const messages = openAIMessages.map(convertOpenAIToUIMessage);
+  const status = convertChatStatusToVercelStatus(openAIStatus);
+
+  // Wrapper functions to maintain existing component interfaces
+  const setMessages: UseChatHelpers['setMessages'] = (updater) => {
+    if (typeof updater === 'function') {
+      setOpenAIMessages((prev) => {
+        const uiMessages = prev.map(convertOpenAIToUIMessage);
+        const updated = updater(uiMessages);
+        // Convert back to OpenAI format
+        return convertMessagesToOpenAI(updated);
+      });
+    } else {
+      setOpenAIMessages(convertMessagesToOpenAI(updater));
+    }
+  };
+
+  const handleSubmit: UseChatHelpers['handleSubmit'] = (event, options) => {
+    if (event && typeof event === 'object' && 'preventDefault' in event) {
+      // Convert to proper FormEvent for our handler
+      const formEvent = event as React.FormEvent;
+      openAIHandleSubmit(formEvent);
+    } else {
+      openAIHandleSubmit();
+    }
+    return Promise.resolve(null); // Return promise to match expected signature
+  };
+
+  const append: UseChatHelpers['append'] = (message, options) => {
+    const openAIMessage: OpenAIMessage = {
+      id: generateUUID(),
+      role: message.role === 'data' ? 'assistant' : message.role, // Map data role
+      content: message.content,
+      createdAt: new Date(),
+    };
+    openAIAppend(openAIMessage);
+    return Promise.resolve(null); // Return promise to match expected signature
+  };
+
+  const reload: UseChatHelpers['reload'] = (chatRequestOptions) => {
+    openAIReload();
+    return Promise.resolve(null); // Return promise to match expected signature
+  };
+
+  // Create compatible setInput function
+  const setInput: React.Dispatch<React.SetStateAction<string>> = (value) => {
+    if (typeof value === 'function') {
+      openAISetInput(value(input));
+    } else {
+      openAISetInput(value);
+    }
+  };
+
   const searchParams = useSearchParams();
   const query = searchParams.get('query');
 
   const [hasAppendedQuery, setHasAppendedQuery] = useState(false);
 
-  // Add debugging for streaming status and data
+  // Add debugging for streaming status
   useEffect(() => {
-    console.log('🔄 Chat status changed:', status);
-    if (status === 'streaming') {
+    console.log('🔄 Chat status changed:', openAIStatus);
+    if (openAIStatus === 'streaming') {
       console.log('📡 Starting to stream...');
-    } else if (status === 'error') {
+    } else if (openAIStatus === 'error') {
       console.log('❌ Stream error occurred');
-    }
-  }, [status]);
-
-  useEffect(() => {
-    if (data?.length) {
-      const latestChunk = data[data.length - 1];
-      console.log(
-        '📊 New streaming data:',
-        data.length,
-        'chunks, latest:',
-        latestChunk,
-      );
-
-      // CRITICAL FIX: Validate streaming chunks for malformed message parts
-      if (latestChunk && typeof latestChunk === 'object') {
-        const chunk = latestChunk as any; // Cast to any to access dynamic properties
-        console.log(
-          '🔍 Validating streaming chunk:',
-          JSON.stringify(chunk, null, 2),
-        );
-
-        // Check for message parts in the chunk
-        if (chunk.parts && Array.isArray(chunk.parts)) {
-          console.log(
-            '🔍 Found message parts in streaming chunk:',
-            chunk.parts,
-          );
-          chunk.parts.forEach((part: any, index: number) => {
-            if (part.type === 'text' && typeof part.text !== 'string') {
-              console.error(
-                `❌ CRITICAL: Non-string text part in streaming chunk at index ${index}:`,
-                part,
-              );
-              // This is read-only, so we can't fix it here, but we can identify the source
-              console.error(
-                '🚨 This is the source of the "text parts expect string value" error!',
-              );
-            }
-          });
-        }
-
-        // Check nested structures
-        if (chunk.data && typeof chunk.data === 'object') {
-          if (chunk.data.parts && Array.isArray(chunk.data.parts)) {
-            console.log(
-              '🔍 Found nested message parts in streaming chunk:',
-              chunk.data.parts,
-            );
-            chunk.data.parts.forEach((part: any, index: number) => {
-              if (part.type === 'text' && typeof part.text !== 'string') {
-                console.error(
-                  `❌ CRITICAL: Non-string text part in nested data at index ${index}:`,
-                  part,
-                );
-                console.error(
-                  '🚨 This is the source of the "text parts expect string value" error!',
-                );
-              }
-            });
-          }
-        }
+      if (error) {
+        console.error('Error details:', error);
       }
-
-      console.log('📈 Real-time streaming is working!');
     }
-  }, [data]);
+  }, [openAIStatus, error]);
 
   // Track messages for streaming behavior
   useEffect(() => {
-    console.log('💬 Messages updated:', messages.length, 'total messages');
-    const lastMessage = messages[messages.length - 1];
+    console.log(
+      '💬 Messages updated:',
+      openAIMessages.length,
+      'total messages',
+    );
+    const lastMessage = openAIMessages[openAIMessages.length - 1];
     if (lastMessage?.role === 'assistant') {
       console.log(
         `🤖 Assistant message received: ${lastMessage.content?.substring(0, 50)}...`,
       );
     }
-  }, [messages]);
+  }, [openAIMessages]);
 
   useEffect(() => {
     if (query && !hasAppendedQuery) {
@@ -268,142 +233,40 @@ export function Chat({
     fetcher,
   );
 
-  const [attachments, setAttachments] = useState<Array<Attachment>>([]);
+  const [attachments, setAttachments] = useState<Array<VercelAttachment>>([]);
   const isArtifactVisible = useArtifactSelector((state) => state.isVisible);
 
-  // Add artifact handling from DataStreamHandler
+  // Add artifact handling - we'll need to adapt this for OpenAI streaming format
   const { artifact, setArtifact, setMetadata } = useArtifact();
-  const lastProcessedIndex = useRef(-1);
 
-  // ENHANCED: Process data stream for artifacts with coordinated tool events
+  // For now, we'll implement a simplified artifact handling
+  // TODO: Implement proper artifact streaming integration in Phase 3
   useEffect(() => {
-    if (!data?.length) return;
+    // This is a placeholder for artifact handling
+    // We'll implement proper streaming artifact integration in Phase 3
+    console.log('🎨 Artifact system ready for Phase 3 integration');
+  }, [openAIMessages]);
 
-    const newDeltas = data.slice(lastProcessedIndex.current + 1);
-    lastProcessedIndex.current = data.length - 1;
-
-    newDeltas.forEach((delta: any) => {
-      // Enhanced deserialization for tool events
-      let processedDelta = delta;
-      const isToolEvent = [
-        'tool-call',
-        'tool-result',
-        'tool-start',
-        'tool-complete',
-        'tool-error',
-        'model-routing',
-      ].includes(delta.type);
-
-      if (isToolEvent && typeof delta.content === 'string') {
-        try {
-          const parsedContent = JSON.parse(delta.content);
-          processedDelta = {
-            ...delta,
-            content: parsedContent,
-            data: parsedContent,
-          };
-        } catch (error) {
-          // Use original delta if parsing fails
-          console.warn(
-            `Failed to parse ${delta.type} in Chat component:`,
-            error,
-          );
-          processedDelta = delta;
-        }
-      }
-
-      const artifactDefinition = artifactDefinitions.find(
-        (artifactDefinition) => artifactDefinition.kind === artifact.kind,
+  // Auto-resume functionality (simplified for OpenAI format)
+  useEffect(() => {
+    if (
+      autoResume &&
+      openAIMessages.length === 0 &&
+      openAIInitialMessages.length > 0
+    ) {
+      console.log(
+        '🔄 Auto-resuming conversation with',
+        openAIInitialMessages.length,
+        'messages',
       );
-
-      if (artifactDefinition?.onStreamPart) {
-        artifactDefinition.onStreamPart({
-          streamPart: processedDelta,
-          setArtifact,
-          setMetadata,
-        });
-      }
-
-      setArtifact((draftArtifact) => {
-        if (!draftArtifact) {
-          return { ...initialArtifactData, status: 'streaming' };
-        }
-
-        switch (processedDelta.type) {
-          case 'id':
-            return {
-              ...draftArtifact,
-              documentId: processedDelta.content as string,
-              status: 'streaming',
-            };
-
-          case 'title':
-            return {
-              ...draftArtifact,
-              title: processedDelta.content as string,
-              status: 'streaming',
-            };
-
-          case 'kind':
-            return {
-              ...draftArtifact,
-              kind: processedDelta.content as any,
-              status: 'streaming',
-            };
-
-          case 'clear':
-            return {
-              ...draftArtifact,
-              content: '',
-              status: 'streaming',
-            };
-
-          case 'finish':
-            return {
-              ...draftArtifact,
-              status: 'idle',
-            };
-
-          // NEW: Handle coordinated tool execution events
-          case 'tool-start':
-            console.log('🔧 Tool started:', processedDelta.data);
-            return {
-              ...draftArtifact,
-              status: 'streaming',
-              isVisible: true, // Make artifact visible when tool starts
-            };
-
-          case 'tool-complete':
-            console.log('✅ Tool completed:', processedDelta.data);
-            return {
-              ...draftArtifact,
-              status: 'idle', // Tool completed successfully
-            };
-
-          case 'tool-error':
-            console.warn(
-              '❌ Tool error:',
-              processedDelta.data?.error || processedDelta.content,
-            );
-            return {
-              ...draftArtifact,
-              status: 'idle', // Reset to idle state on error
-            };
-
-          default:
-            return draftArtifact;
-        }
-      });
-    });
-  }, [data, setArtifact, setMetadata, artifact]);
-
-  useAutoResume({
+      setOpenAIMessages(openAIInitialMessages);
+    }
+  }, [
     autoResume,
-    initialMessages,
-    experimental_resume,
-    data,
-    setMessages,
-  });
+    openAIMessages.length,
+    openAIInitialMessages,
+    setOpenAIMessages,
+  ]);
 
   return (
     <>
@@ -448,23 +311,25 @@ export function Chat({
         </form>
       </div>
 
-      <Artifact
-        chatId={id}
-        input={input}
-        setInput={setInput}
-        handleSubmit={handleSubmit}
-        status={status}
-        stop={stop}
-        attachments={attachments}
-        setAttachments={setAttachments}
-        append={append}
-        messages={messages}
-        setMessages={setMessages}
-        reload={reload}
-        votes={votes}
-        isReadonly={isReadonly}
-        selectedVisibilityType={visibilityType}
-      />
+      {isArtifactVisible && (
+        <Artifact
+          chatId={id}
+          input={input}
+          setInput={setInput}
+          handleSubmit={handleSubmit}
+          status={status}
+          stop={stop}
+          attachments={attachments}
+          setAttachments={setAttachments}
+          append={append}
+          messages={messages}
+          setMessages={setMessages}
+          reload={reload}
+          votes={votes}
+          isReadonly={isReadonly}
+          selectedVisibilityType={visibilityType}
+        />
+      )}
     </>
   );
 }

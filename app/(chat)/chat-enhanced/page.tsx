@@ -1,39 +1,30 @@
-import { cookies } from 'next/headers';
 import { auth } from '@/app/(auth)/auth';
-import { ChatEnhanced } from '@/components/chat-enhanced';
-import { DEFAULT_CHAT_MODEL } from '@/lib/ai/models';
-import { generateUUID } from '@/lib/utils';
-import { DataStreamHandler } from '@/components/data-stream-handler';
-import { redirect } from 'next/navigation';
+import { Chat } from '@/components/chat';
+import { getChatById, getMessagesByChatId } from '@/lib/db/queries';
+import { convertToCoreMessages } from 'ai';
+import { notFound } from 'next/navigation';
+import { convertMessagesToOpenAI } from '@/lib/utils/message-formatting';
 
-export default async function EnhancedChatPage() {
+export default async function ChatEnhancedPage() {
   const session = await auth();
 
-  if (!session) {
-    redirect('/api/auth/guest');
+  if (!session || !session.user) {
+    return notFound();
   }
 
-  const id = generateUUID();
-
-  const cookieStore = await cookies();
-  const modelIdFromCookie = cookieStore.get('chat-model');
-
-  const selectedModel = modelIdFromCookie?.value || DEFAULT_CHAT_MODEL;
+  // Create a new enhanced chat with default settings
+  const chatId = `enhanced-${Date.now()}`;
 
   return (
-    <>
-      <ChatEnhanced
-        key={id}
-        id={id}
-        initialMessages={[]}
-        initialChatModel={selectedModel}
-        initialVisibilityType="private"
-        isReadonly={false}
-        session={session}
-        autoResume={false}
-        showPerformanceIndicator={true}
-      />
-      <DataStreamHandler id={id} />
-    </>
+    <Chat
+      key={chatId}
+      id={chatId}
+      initialMessages={[]}
+      initialChatModel="gpt-4"
+      initialVisibilityType="private"
+      isReadonly={false}
+      session={session}
+      autoResume={false}
+    />
   );
 }
