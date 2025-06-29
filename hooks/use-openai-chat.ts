@@ -92,17 +92,41 @@ export function useOpenAIChat(
 
       try {
         setStatus('streaming');
+        console.log('🔧 Starting to process streaming response...');
 
         while (true) {
           const { done, value } = await reader.read();
 
-          if (done) break;
+          if (done) {
+            console.log('🔧 Stream completed');
+            break;
+          }
 
           const chunk = decoder.decode(value, { stream: true });
+          console.log('🔧 Received chunk:', chunk);
+
           const lines = chunk.split('\n').filter((line) => line.trim());
 
           for (const line of lines) {
-            if (line.startsWith('data: ')) {
+            console.log('🔧 Processing line:', line);
+
+            // Handle custom streaming format from backend
+            if (line.startsWith('1:')) {
+              // Text content: "1:text"
+              const textContent = line.slice(2);
+              currentContent += textContent;
+              console.log('🔧 Added text content:', textContent);
+
+              // Update message in real-time
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, content: currentContent }
+                    : msg,
+                ),
+              );
+            } else if (line.startsWith('data: ')) {
+              // SSE format fallback
               const data = line.slice(6);
 
               if (data === '[DONE]') {
@@ -149,12 +173,80 @@ export function useOpenAIChat(
                   );
                 }
               } catch (parseError) {
-                console.warn('Failed to parse streaming chunk:', parseError);
+                console.warn('Failed to parse SSE chunk:', parseError);
                 // Continue processing other chunks
+              }
+            } else if (line.startsWith('{') && line.endsWith('}')) {
+              // JSON data format: "{json}"
+              try {
+                const parsed = JSON.parse(line);
+                console.log('🔧 Parsed JSON data:', parsed);
+
+                // Handle different data types
+                if (parsed.type === 'text-delta') {
+                  currentContent += parsed.content;
+                  console.log('🔧 Added text-delta content:', parsed.content);
+
+                  // Update message in real-time
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === assistantMessageId
+                        ? { ...msg, content: currentContent }
+                        : msg,
+                    ),
+                  );
+                } else if (parsed.type === 'tool-call') {
+                  console.log('🔧 Tool call received:', parsed.data);
+                  // Handle tool calls if needed
+                } else if (parsed.type === 'tool-result') {
+                  console.log('🔧 Tool result received:', parsed.data);
+                  // Handle tool results if needed
+                } else if (parsed.type === 'error') {
+                  throw new ChatError(
+                    parsed.data?.error || 'Streaming error occurred',
+                  );
+                }
+              } catch (parseError) {
+                console.warn(
+                  'Failed to parse JSON chunk:',
+                  parseError,
+                  'Line:',
+                  line,
+                );
+                // Continue processing other chunks
+              }
+            } else if (line.trim()) {
+              // Try to parse as plain JSON (fallback)
+              try {
+                const parsed = JSON.parse(line);
+                console.log('🔧 Parsed fallback JSON:', parsed);
+
+                if (parsed.content) {
+                  currentContent += parsed.content;
+                  console.log('🔧 Added fallback content:', parsed.content);
+
+                  // Update message in real-time
+                  setMessages((prev) =>
+                    prev.map((msg) =>
+                      msg.id === assistantMessageId
+                        ? { ...msg, content: currentContent }
+                        : msg,
+                    ),
+                  );
+                }
+              } catch (parseError) {
+                console.warn(
+                  'Failed to parse line as JSON:',
+                  parseError,
+                  'Line:',
+                  line,
+                );
               }
             }
           }
         }
+
+        console.log('🔧 Final content:', currentContent);
 
         // Finalize the message
         const finalMessage: OpenAIMessage = {

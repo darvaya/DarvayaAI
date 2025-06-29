@@ -267,13 +267,7 @@ export async function POST(request: Request) {
           };
 
           // Route model selection (Phase 3: 5% traffic to Gemini Flash Lite)
-          const routedModel = selectModelWithRouting(
-            selectedChatModel as
-              | 'chat-model'
-              | 'chat-model-reasoning'
-              | 'gemini-flash-lite',
-            userContext,
-          );
+          const routedModel = selectedChatModel;
 
           const modelConfig = getModelConfig(routedModel);
           const systemMessage = systemPrompt({
@@ -302,15 +296,15 @@ export async function POST(request: Request) {
             );
           }
 
-          // Send routing info to data stream for monitoring (serialize properly for Redis)
+          // Send routing info to data stream for monitoring
           writer.writeData({
             type: 'model-routing',
-            data: JSON.stringify({
+            data: {
               originalModel: selectedChatModel,
               routedModel,
               userId: session.user.id,
               timestamp: new Date().toISOString(),
-            }),
+            },
           });
 
           const streamGenerator = streamChatWithTools(
@@ -340,21 +334,28 @@ export async function POST(request: Request) {
             for await (const chunk of streamGenerator) {
               if (chunk.type === 'content') {
                 fullContent += chunk.data;
+                console.log('🔧 Writing text chunk:', chunk.data);
                 writer.writeText(chunk.data);
               } else if (chunk.type === 'tool_call') {
                 // FIXED: Remove double serialization - pass data directly
+                console.log('🔧 Writing tool call chunk:', chunk.data);
                 writer.writeData({
                   type: 'tool-call',
                   data: chunk.data,
                 });
               } else if (chunk.type === 'tool_result') {
                 // FIXED: Remove double serialization - pass data directly
+                console.log('🔧 Writing tool result chunk:', chunk.data);
                 writer.writeData({
                   type: 'tool-result',
                   data: chunk.data,
                 });
               } else if (chunk.type === 'finish') {
                 streamCompleted = true;
+                console.log(
+                  '🔧 Stream finished, total content length:',
+                  fullContent.length,
+                );
 
                 // Record performance metrics for Phase 3 monitoring
                 const endTime = Date.now();
@@ -462,7 +463,10 @@ export async function POST(request: Request) {
               }
             }
           } catch (error) {
-            console.error('Streaming error:', error);
+            console.error(
+              '🔴 STREAMING ERROR:',
+              JSON.stringify(error, null, 2),
+            );
             writer.writeData({
               type: 'error',
               data: {

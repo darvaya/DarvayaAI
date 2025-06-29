@@ -56,11 +56,7 @@ export class CustomDataStreamWriter {
       }
 
       // Fix nested message objects
-      if (
-        data.message &&
-        data.message.parts &&
-        Array.isArray(data.message.parts)
-      ) {
+      if (data.message?.parts && Array.isArray(data.message.parts)) {
         console.log('🔍 Validating nested message parts:', data.message.parts);
         data.message.parts.forEach((part: any, index: number) => {
           if (part.type === 'text' && typeof part.text !== 'string') {
@@ -99,7 +95,8 @@ export class CustomDataStreamWriter {
       serializedData = JSON.stringify(data);
     }
 
-    const chunk = this.encoder.encode(`0:${serializedData}\n`);
+    const chunk = this.encoder.encode(`${serializedData}\n`);
+    console.log('🔧 Streaming: Writing data chunk:', `${serializedData}\n`);
     this.controller.enqueue(chunk);
   }
 
@@ -116,6 +113,7 @@ export class CustomDataStreamWriter {
     if (!this.controller) return;
 
     const chunk = this.encoder.encode(`1:${text}\n`);
+    console.log('🔧 Streaming: Writing text chunk:', `1:${text}\n`);
     this.controller.enqueue(chunk);
   }
 
